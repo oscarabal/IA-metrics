@@ -55,6 +55,8 @@ The installer, the dashboards and the improvement report are in Spanish.
 | http://localhost:9100/sessions · `/report` · `/prices` | Claude Code sessions, improvement report and model prices |
 | http://localhost:9101/sessions · `/report` · `/prices` | OpenCode sessions, improvement report and model prices |
 
+What each chart shows and how to read it: [chart guide](docs/dashboards.en.md).
+
 Prometheus, Loki and the OTel Collector are not published on your machine (they have no authentication):
 Grafana and the collectors reach them over Docker's internal network. Only 4317 stays open, where Claude
 Code sends its telemetry. To debug: `docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d`

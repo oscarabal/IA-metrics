@@ -53,6 +53,8 @@ A mano: copia `.env.example` a `.env`, define `GRAFANA_ADMIN_PASSWORD` y `COMPOS
 | http://localhost:9100/sessions · `/report` · `/prices` | Sesiones, informe de mejoras y precios de los modelos de Claude Code |
 | http://localhost:9101/sessions · `/report` · `/prices` | Sesiones, informe de mejoras y precios de los modelos de OpenCode |
 
+Qué muestra cada gráfica y cómo leerla: [guía de las gráficas](docs/dashboards.md).
+
 Prometheus, Loki y el OTel Collector no se publican en tu equipo (no tienen autenticación): Grafana y los
 colectores los usan por la red interna de Docker. Solo queda abierto el 4317, por donde Claude Code envía la
 telemetría. Para depurar: `docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d` abre

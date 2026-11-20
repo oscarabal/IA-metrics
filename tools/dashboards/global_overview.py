@@ -125,9 +125,9 @@ def build():
                    "options": {"mode": "markdown", "content":
                                "El detalle está en el dashboard de cada herramienta: **[Claude Code](/d/claude-code)** (prompts, herramientas, "
                                "effort, diagnóstico del coste) y **[OpenCode](/d/opencode-usage)** (agentes, cuotas, evolución semanal). "
-                               "El coste de Claude Code es el de su telemetría cuando existe y, si no, el de la tabla de precios; el de "
-                               "OpenCode es el que guarda OpenCode. Si solo instalaste una herramienta, los paneles de la otra muestran un "
-                               "aviso de conexión."}})
+                               "Todo el coste es a precio de API (con suscripción no es lo que pagas): en Claude Code, el de su telemetría "
+                               "o, si no, el de la tabla de precios; en OpenCode, el que guarda OpenCode o, si guardó 0, tokens × precio de "
+                               "models.dev. Si solo instalaste una herramienta, los paneles de la otra muestran un aviso de conexión."}})
     return {"uid": "ia-overview", "title": "Resumen IA - Uso y coste", "tags": ["ia-metrics"], "timezone": "browser",
             "schemaVersion": 41, "version": 2, "editable": False, "time": {"from": "now-30d", "to": "now"}, "refresh": "5m",
             "description": "Gasto en asistentes de código: Claude Code y OpenCode juntos. Generado por tools/dashboards/global_overview.py.",
