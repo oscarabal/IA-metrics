@@ -1,0 +1,9 @@
+// Contrato de la skill architecture-docs: el frontmatter lleva `title` y el documento su propio H1,
+// y la sección 08 repite Alcance / Mecanismo / Evidencia en cada concepto. Líneas largas en tablas.
+{
+  "config": {
+    "MD013": false,
+    "MD024": { "siblings_only": true },
+    "MD025": { "front_matter_title": "" }
+  }
+}
