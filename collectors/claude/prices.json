@@ -1,0 +1,39 @@
+{
+  "_doc": [
+    "Precios de la API de Claude en USD por millón de tokens, para estimar el coste de las peticiones sin telemetría (ADR 0002).",
+    "Fuente: https://platform.claude.com/docs/en/about-claude/pricing (consultada el 2026-11-20).",
+    "Cada modelo es una lista de periodos: 'from' es la fecha (UTC) desde la que vale ese precio; se usa el último periodo que empezó antes de la petición.",
+    "Campos: input, output, cache_write_5m, cache_write_1h, cache_read. 'tiers': precios por tamaño del prompt (input + lecturas + escrituras de caché).",
+    "'fast': precio de input/output en modo rápido (los multiplicadores de caché se aplican encima). 'geo_us': multiplicador de inference_geo=us.",
+    "Los ids de modelo se comparan por prefijo, sin el sufijo de fecha ni [1m]; el prefijo más largo gana. Un modelo que no está aquí queda como coste 'missing'."
+  ],
+  "web_search_per_request": 0.01,
+  "models": {
+    "claude-fable-5-2":   [{"from": "2026-01-01", "input": 8,  "output": 40, "cache_write_5m": 10,    "cache_write_1h": 16, "cache_read": 0.20, "fast": {"input": 16, "output": 80}, "geo_us": 1.1}],
+    "claude-mythos-5-2":  [{"from": "2026-01-01", "input": 8,  "output": 40, "cache_write_5m": 10,    "cache_write_1h": 16, "cache_read": 0.20, "fast": {"input": 16, "output": 80}, "geo_us": 1.1}],
+    "claude-fable-5-1":   [{"from": "2026-01-01", "input": 10, "output": 50, "cache_write_5m": 12.5,  "cache_write_1h": 20, "cache_read": 0.25, "geo_us": 1.1}],
+    "claude-mythos-5-1":  [{"from": "2026-01-01", "input": 10, "output": 50, "cache_write_5m": 12.5,  "cache_write_1h": 20, "cache_read": 0.25, "geo_us": 1.1}],
+    "claude-fable-5":     [{"from": "2026-01-01", "input": 10, "output": 50, "cache_write_5m": 12.5,  "cache_write_1h": 20, "cache_read": 1,    "geo_us": 1.1}],
+    "claude-mythos-5":    [{"from": "2026-01-01", "input": 10, "output": 50, "cache_write_5m": 12.5,  "cache_write_1h": 20, "cache_read": 1,    "geo_us": 1.1}],
+    "claude-opus-5-5":    [{"from": "2026-01-01", "input": 4,  "output": 20, "cache_write_5m": 5,     "cache_write_1h": 8,  "cache_read": 0.20, "fast": {"input": 8, "output": 40}, "geo_us": 1.1}],
+    "claude-opus-5":      [{"from": "2026-01-01", "input": 5,  "output": 25, "cache_write_5m": 6.25,  "cache_write_1h": 10, "cache_read": 0.50, "fast": {"input": 10, "output": 50}, "geo_us": 1.1}],
+    "claude-opus-4-8":    [{"from": "2026-01-01", "input": 5,  "output": 25, "cache_write_5m": 6.25,  "cache_write_1h": 10, "cache_read": 0.50, "fast": {"input": 10, "output": 50}, "geo_us": 1.1}],
+    "claude-opus-4-7":    [{"from": "2026-01-01", "input": 5,  "output": 25, "cache_write_5m": 6.25,  "cache_write_1h": 10, "cache_read": 0.50, "geo_us": 1.1}],
+    "claude-opus-4-6":    [{"from": "2026-01-01", "input": 5,  "output": 25, "cache_write_5m": 6.25,  "cache_write_1h": 10, "cache_read": 0.50, "geo_us": 1.1}],
+    "claude-opus-4-5":    [{"from": "2025-01-01", "input": 5,  "output": 25, "cache_write_5m": 6.25,  "cache_write_1h": 10, "cache_read": 0.50}],
+    "claude-opus-4-1":    [{"from": "2025-01-01", "input": 15, "output": 75, "cache_write_5m": 18.75, "cache_write_1h": 30, "cache_read": 1.50}],
+    "claude-opus-4":      [{"from": "2025-01-01", "input": 15, "output": 75, "cache_write_5m": 18.75, "cache_write_1h": 30, "cache_read": 1.50}],
+    "claude-sonnet-5-5":  [{"from": "2026-01-01", "input": 2,  "output": 10, "cache_write_5m": 2.5,   "cache_write_1h": 4,  "cache_read": 0.20, "geo_us": 1.1},
+                           {"from": "2026-10-07", "input": 2,  "output": 10, "cache_write_5m": 2.5,   "cache_write_1h": 4,  "cache_read": 0.10, "geo_us": 1.1}],
+    "claude-sonnet-5":    [{"from": "2026-01-01", "input": 2,  "output": 10, "cache_write_5m": 2.5,   "cache_write_1h": 4,  "cache_read": 0.20, "geo_us": 1.1}],
+    "claude-sonnet-4-6":  [{"from": "2026-01-01", "input": 3,  "output": 15, "cache_write_5m": 3.75,  "cache_write_1h": 6,  "cache_read": 0.30, "geo_us": 1.1}],
+    "claude-sonnet-4-5":  [{"from": "2025-01-01", "input": 3,  "output": 15, "cache_write_5m": 3.75,  "cache_write_1h": 6,  "cache_read": 0.30,
+                            "tiers": [{"over": 200000, "input": 6, "output": 22.5, "cache_write_5m": 7.5, "cache_write_1h": 12, "cache_read": 0.60}]}],
+    "claude-sonnet-4":    [{"from": "2025-01-01", "input": 3,  "output": 15, "cache_write_5m": 3.75,  "cache_write_1h": 6,  "cache_read": 0.30,
+                            "tiers": [{"over": 200000, "input": 6, "output": 22.5, "cache_write_5m": 7.5, "cache_write_1h": 12, "cache_read": 0.60}]}],
+    "claude-haiku-5-5":   [{"from": "2026-10-07", "input": 0.10, "output": 0.50, "cache_write_5m": 0.125, "cache_write_1h": 0.20, "cache_read": 0.01, "geo_us": 1.1,
+                            "tiers": [{"over": 100000, "input": 0.50, "output": 2.50, "cache_write_5m": 0.625, "cache_write_1h": 1, "cache_read": 0.05}]}],
+    "claude-haiku-4-5":   [{"from": "2025-01-01", "input": 1,  "output": 5,  "cache_write_5m": 1.25,  "cache_write_1h": 2,  "cache_read": 0.10}],
+    "claude-3-5-haiku":   [{"from": "2024-01-01", "input": 0.80, "output": 4, "cache_write_5m": 1,    "cache_write_1h": 1.6, "cache_read": 0.08}]
+  }
+}

@@ -1,0 +1,17 @@
+# Puertos de depuración, cerrados por defecto (auditoría de seguridad del 20-11-2026).
+# Prometheus, Loki y el OTel Collector no tienen autenticación ni comprueban la cabecera Host, así que
+# una web maliciosa podría leerlos (DNS rebinding) o escribir en Loki. Ábrelos solo mientras depuras:
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
+# y vuelve a cerrarlos con:
+#   docker compose up -d
+services:
+  prometheus:
+    ports:
+      - "127.0.0.1:9090:9090"
+  otel-collector:
+    ports:
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+      - "127.0.0.1:8889:8889"   # métricas expuestas a Prometheus
+  loki:
+    ports:
+      - "127.0.0.1:3100:3100"

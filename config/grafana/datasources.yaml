@@ -1,0 +1,29 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+  # Eventos de Claude Code (perfil claude)
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+  # Informe de mejoras de cada colector, leído por los paneles «Mejoras»
+  - name: Coach Claude Code
+    uid: coach-claude
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    jsonData:
+      allowedHosts:
+        - http://claude-collector:9100
+  - name: Coach OpenCode
+    uid: coach-opencode
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    jsonData:
+      allowedHosts:
+        - http://opencode-collector:9101

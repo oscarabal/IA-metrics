@@ -1,0 +1,25 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"   # the collectors' image (python:3.13-alpine)
+      - name: Dependencias de los tests
+        run: pip install pyyaml
+      - name: Tests (colectores, contrato, configuración, sintaxis del instalador con pwsh)
+        run: python tests/run.py
+      - name: docker compose config con cada perfil
+        env:
+          GRAFANA_ADMIN_PASSWORD: ci
+        run: |
+          for p in claude opencode "claude,opencode"; do
+            COMPOSE_PROFILES=$p docker compose config --quiet
+          done

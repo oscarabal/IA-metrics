@@ -1,0 +1,13 @@
+# Saltos de línea fijos, sea cual sea core.autocrlf de quien clone
+* text=auto eol=lf
+
+# Windows los necesita con CRLF (cmd.exe y Windows PowerShell 5.1)
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binarios
+*.ico  binary
+*.png  binary
+*.pdf  binary
+*.docx binary

@@ -1,0 +1,187 @@
+"""Static checks of compose, Prometheus, Grafana provisioning and dashboards."""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import unittest
+
+import helpers
+
+try:
+    import yaml
+except ImportError:  # PyYAML is only needed here; CI installs it
+    yaml = None
+
+R = helpers.ROOT
+
+
+def load_yaml(path):
+    with open(os.path.join(R, path), encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def dashboards():
+    for path in sorted(glob.glob(os.path.join(R, "grafana", "dashboards", "*", "*.json"))):
+        with open(path, encoding="utf-8") as f:
+            yield path, json.load(f)
+
+
+def panels(d):
+    def walk(p):
+        yield p
+        for c in p.get("panels", []):
+            yield from walk(c)
+    for p in d.get("panels", []):
+        yield from walk(p)
+
+
+def targets(d):
+    for p in panels(d):
+        for t in p.get("targets", []):
+            yield p, t
+    for v in d.get("templating", {}).get("list", []):
+        yield v, v
+
+
+@unittest.skipIf(yaml is None, "PyYAML no instalado")
+class Compose(unittest.TestCase):
+    def setUp(self):
+        self.c = load_yaml("docker-compose.yml")
+
+    def test_profiles(self):
+        prof = {n: tuple(s.get("profiles", ())) for n, s in self.c["services"].items()}
+        self.assertEqual(prof["prometheus"], ())
+        self.assertEqual(prof["grafana"], ())
+        for n in ("otel-collector", "loki", "claude-collector"):
+            self.assertEqual(prof[n], ("claude",), n)
+        self.assertEqual(prof["opencode-collector"], ("opencode",))
+
+    def test_images_pinned(self):
+        for n, s in self.c["services"].items():
+            self.assertNotRegex(s["image"], r":latest$|^[^:]+$", n)
+
+    def test_ports_loopback_only(self):
+        for n, s in self.c["services"].items():
+            for p in s.get("ports", []):
+                self.assertTrue(str(p).startswith("127.0.0.1:"), "%s publica %s" % (n, p))
+
+    def test_logs_capped(self):
+        for n, s in self.c["services"].items():
+            self.assertIn("max-size", s.get("logging", {}).get("options", {}), n)
+
+    def test_privacy_mounts(self):
+        mounts = " ".join(self.c["services"]["claude-collector"]["volumes"])
+        self.assertNotIn("settings.json", mounts)
+        for v in self.c["services"]["claude-collector"]["volumes"]:
+            if ".claude}" in v:
+                self.assertRegex(v, r"\.claude\}/(projects|commands|skills):.*:ro$")
+
+    def test_prometheus_targets_exist(self):
+        prom = load_yaml("config/prometheus/prometheus.yml")
+        for job in prom["scrape_configs"]:
+            for sc in job["static_configs"]:
+                for t in sc["targets"]:
+                    self.assertIn(t.split(":")[0], self.c["services"], t)
+
+    def test_collector_ports_match_prometheus(self):
+        prom = load_yaml("config/prometheus/prometheus.yml")
+        wanted = {t for j in prom["scrape_configs"] for sc in j["static_configs"] for t in sc["targets"]}
+        self.assertIn("claude-collector:9100", wanted)
+        self.assertIn("opencode-collector:9101", wanted)
+
+
+@unittest.skipIf(yaml is None, "PyYAML no instalado")
+class Grafana(unittest.TestCase):
+    def setUp(self):
+        self.ds = {d["uid"]: d for d in load_yaml("config/grafana/datasources.yaml")["datasources"]}
+
+    def test_dashboard_uids_unique(self):
+        uids = [d["uid"] for _p, d in dashboards()]
+        self.assertEqual(len(uids), len(set(uids)))
+
+    def test_datasources_exist(self):
+        for path, d in dashboards():
+            for p, t in targets(d):
+                ds = t.get("datasource") or p.get("datasource")
+                uid = ds.get("uid") if isinstance(ds, dict) else None
+                if uid and not uid.startswith("$") and uid not in ("-- Grafana --", "grafana", "-- Mixed --", "-- Dashboard --"):
+                    self.assertIn(uid, self.ds, "%s: %s" % (os.path.basename(path), p.get("title") or p.get("name")))
+
+    def test_infinity_urls_allowed(self):
+        for path, d in dashboards():
+            for p, t in targets(d):
+                ds = t.get("datasource") or p.get("datasource") or {}
+                if not isinstance(ds, dict) or ds.get("type") != "yesoreyeram-infinity-datasource":
+                    continue
+                url = t.get("url") or (t.get("query") or {}).get("url") if isinstance(t.get("query"), dict) else t.get("url")
+                if not url:
+                    continue
+                allowed = self.ds[ds["uid"]]["jsonData"]["allowedHosts"]
+                self.assertTrue(any(url.startswith(a) for a in allowed), "%s: %s -> %s" % (os.path.basename(path), p.get("title"), url))
+
+    def test_field_filter_not_defeated_by_renames(self):
+        """Grafana applies displayName overrides before reduceOptions.fields: a panel that renames its
+        fields and then picks them by their original name shows "No data"."""
+        for path, d in dashboards():
+            for p in panels(d):
+                fields = ((p.get("options") or {}).get("reduceOptions") or {}).get("fields") or ""
+                if not fields:
+                    continue
+                renames = [o for o in (p.get("fieldConfig") or {}).get("overrides", [])
+                           if any(pr.get("id") == "displayName" for pr in o.get("properties", []))]
+                for o in renames:
+                    m = o.get("matcher", {})
+                    hit = m.get("id") == "byFrameRefID" or (m.get("id") == "byName" and re.fullmatch(fields.strip("/").replace("\\", "\\"), m.get("options", "")))
+                    self.assertFalse(hit, "%s: «%s» filtra %s pero renombra ese campo" % (os.path.basename(path), p.get("title"), fields))
+
+    def test_long_no_value_not_in_narrow_cells(self):
+        """fieldConfig.defaults.noValue also fills every empty cell: a sentence in a narrow column makes
+        the whole row as tall as the wrapped sentence. Narrow columns must set their own noValue."""
+        for path, d in dashboards():
+            for p in panels(d):
+                if p.get("type") != "table":
+                    continue
+                text = ((p.get("fieldConfig") or {}).get("defaults") or {}).get("noValue") or ""
+                if len(text) <= 3:
+                    continue
+                for o in (p.get("fieldConfig") or {}).get("overrides", []):
+                    props = {pr.get("id"): pr.get("value") for pr in o.get("properties", [])}
+                    if (props.get("custom.width") or 999) < 120:
+                        self.assertIn("noValue", props, "%s: «%s», columna %s" % (os.path.basename(path), p.get("title"),
+                                                                                    o.get("matcher", {}).get("options")))
+
+    def test_table_rows_one_line(self):
+        """Wrapped cells make Grafana size each row for its longest text: tables stay one line per row."""
+        for path, d in dashboards():
+            for p in panels(d):
+                if p.get("type") == "table":
+                    co = (((p.get("fieldConfig") or {}).get("defaults") or {}).get("custom") or {}).get("cellOptions") or {}
+                    self.assertFalse(co.get("wrapText"), "%s: «%s»" % (os.path.basename(path), p.get("title")))
+                    self.assertNotEqual((p.get("options") or {}).get("cellHeight"), "lg", p.get("title"))
+
+    def test_no_legacy_names(self):
+        for path, d in dashboards():
+            text = json.dumps(d)
+            for bad in ("session-map:", "exporter:9101", '"uid": "coach"', "localhost:3001"):
+                self.assertNotIn(bad, text, os.path.basename(path))
+
+
+class Installer(unittest.TestCase):
+    @unittest.skipIf(not shutil.which("pwsh"), "pwsh no instalado")
+    def test_ps1_parses(self):
+        script = ("$e=$null;[System.Management.Automation.Language.Parser]::ParseFile('%s',[ref]$null,[ref]$e)|Out-Null;"
+                  "if($e.Count){$e|%%{$_.Message};exit 1}" % os.path.join(R, "installer", "install.ps1"))
+        r = subprocess.run(["pwsh", "-NoProfile", "-Command", script], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_line_endings(self):
+        for rel in ("Instalar.bat", "Iniciar-metricas.bat", "installer/install.ps1"):
+            with open(os.path.join(R, rel), "rb") as f:
+                data = f.read()
+            self.assertNotRegex(data, re.compile(rb"[^\r]\n"), rel)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,146 @@
+# IA-metrics: pila local de uso y coste de asistentes de código.
+# Prometheus y Grafana arrancan siempre; el resto depende de los perfiles de COMPOSE_PROFILES (.env):
+#   claude   -> otel-collector, loki, claude-collector  (Claude Code)
+#   opencode -> opencode-collector                      (OpenCode)
+# El instalador (Instalar.bat) escribe COMPOSE_PROFILES según lo que elijas.
+name: ia-metrics
+
+# Logs de Docker limitados: sin esto el driver json-file crece sin límite
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-collector: &collector
+  image: python:3.13-alpine
+  # Un solo código para los dos colectores: cada uno monta ./collectors en /srv, ejecuta su punto de
+  # entrada y comparte collectors/common (PYTHONPATH=/srv)
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  # ---------------------------------------------------------------- comunes
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-365d}"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    # Sin puerto publicado: Grafana lo consulta por la red interna. Para depurar: docker-compose.debug.yml
+    restart: unless-stopped
+    logging: *logging
+
+  grafana:
+    image: grafana/grafana:12.1.10   # 12.1.10 corrige CVE-2026-27880 y CVE-2026-27876
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?ejecuta Instalar.bat o copia .env.example a .env y define una contraseña}
+      # Los paneles «Mejoras» leen el informe de los colectores con este plugin (el primer arranque necesita internet)
+      - GF_PLUGINS_PREINSTALL_SYNC=yesoreyeram-infinity-datasource
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/global/ia-overview.json
+    volumes:
+      - ./config/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./config/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    logging: *logging
+
+  # ---------------------------------------------------------------- Claude Code
+  otel-collector:
+    profiles: ["claude"]
+    image: otel/opentelemetry-collector-contrib:0.130.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"   # OTLP gRPC: Claude Code envía aquí (lo único que usa el instalador)
+      # 4318 (OTLP HTTP) y 8889 (métricas para Prometheus) solo en la red interna; para depurar: docker-compose.debug.yml
+    depends_on:
+      - loki
+    restart: unless-stopped
+    logging: *logging
+
+  loki:
+    profiles: ["claude"]
+    image: grafana/loki:3.4.2
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./config/loki.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    # Sin puerto publicado: Loki no tiene autenticación y su API permite escribir y borrar.
+    # Grafana y el colector lo usan por la red interna. Para depurar: docker-compose.debug.yml
+    restart: unless-stopped
+    logging: *logging
+
+  claude-collector:
+    <<: *collector
+    profiles: ["claude"]
+    command: ["python", "/srv/claude/map.py"]
+    volumes:
+      - ./collectors:/srv:ro
+      # Conversaciones: carpeta = proyecto, fichero = session_id. Solo metadatos, nunca el texto
+      - ${CLAUDE_DIR:-${USERPROFILE:-${HOME}}/.claude}/projects:/projects:ro
+      # Informe de mejoras: comandos y skills propios. Nunca ~/.claude entero ni settings.json, que pueden llevar claves
+      - ${CLAUDE_DIR:-${USERPROFILE:-${HOME}}/.claude}/commands:/claude-config/commands:ro
+      - ${CLAUDE_DIR:-${USERPROFILE:-${HOME}}/.claude}/skills:/claude-config/skills:ro
+      # Historial del informe más allá de los 30 días de Loki
+      - coach-data:/state
+    environment:
+      - PYTHONPATH=/srv
+      - CONTEXT_LIMIT_DEFAULT=${CLAUDE_CONTEXT_LIMIT_DEFAULT:-200000}
+      - CONTEXT_LIMITS=${CLAUDE_CONTEXT_LIMITS:-}
+      - CONTEXT_SESSIONS=${CLAUDE_CONTEXT_SESSIONS:-30}
+      - PROJECT_ROOTS=${PROJECT_ROOTS:-}
+      - COACH_DB=/state/coach.db
+      - DASHBOARD_URL=http://localhost:3000/d/claude-code
+      # Texto de los prompts en «Prompts más caros»: solo en memoria; el dashboard lo muestra u oculta
+      - PROMPT_TEXT=${CLAUDE_PROMPT_TEXT:-1}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
+      # ADR 0002: zona horaria de los días de la API /data, y series por día antiguas (1 mientras se valida la migración)
+      - TZ=${TZ:-Europe/Madrid}
+      - LEGACY_DAY_METRICS=${LEGACY_DAY_METRICS:-1}
+    ports:
+      - "127.0.0.1:9100:9100"   # páginas de sesión e informe
+    depends_on:
+      - loki
+
+  # ---------------------------------------------------------------- OpenCode
+  opencode-collector:
+    <<: *collector
+    profiles: ["opencode"]
+    command: ["python", "/srv/opencode/exporter.py"]
+    volumes:
+      - ./collectors:/srv:ro
+      # La carpeta también guarda auth.json de OpenCode; el colector solo abre opencode.db
+      - ${OPENCODE_DATA_DIR:-${USERPROFILE:-${HOME}}/.local/share/opencode}:/data:ro
+      # Solo se lee models.json (límite de contexto) y el estado del plugin de cuotas
+      - ${OPENCODE_CACHE_DIR:-${USERPROFILE:-${HOME}}/.cache/opencode}:/cache:ro
+      # Solo la carpeta de comandos de la configuración, que también guarda ajustes con claves
+      - ${OPENCODE_COMMANDS_DIR:-${USERPROFILE:-${HOME}}/.config/opencode/commands}:/commands:ro
+    environment:
+      - PYTHONPATH=/srv
+      - CONTEXT_LIMITS=${OPENCODE_CONTEXT_LIMITS:-}
+      - CONTEXT_SESSIONS=${OPENCODE_CONTEXT_SESSIONS:-5}
+      # Proveedores de suscripción (o locales) cuyo coste 0 es correcto: no cuentan como «Modelos sin precio»
+      - SUBSCRIPTION_PROVIDERS=${OPENCODE_SUBSCRIPTION_PROVIDERS:-}
+      - GRAFANA_URL=http://localhost:3000/d/opencode-usage
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
+      # ADR 0002: zona horaria de los días de la API /data, y series por día antiguas (1 mientras se valida la migración)
+      - TZ=${TZ:-Europe/Madrid}
+      - LEGACY_DAY_METRICS=${LEGACY_DAY_METRICS:-1}
+    ports:
+      - "127.0.0.1:9101:9101"   # páginas de sesión e informe
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  coach-data:

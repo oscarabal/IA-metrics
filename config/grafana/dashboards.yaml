@@ -1,0 +1,9 @@
+apiVersion: 1
+providers:
+  # Cada subcarpeta de grafana/dashboards es una carpeta de Grafana (global, claude, opencode)
+  - name: ia-metrics
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

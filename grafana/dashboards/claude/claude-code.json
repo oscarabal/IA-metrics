@@ -1,0 +1,3239 @@
+{
+  "title": "Claude Code",
+  "uid": "claude-code",
+  "schemaVersion": 39,
+  "version": 13,
+  "refresh": "1m",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "tags": [
+    "claude-code"
+  ],
+  "panels": [
+    {
+      "type": "row",
+      "title": "Resumen",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "id": 1,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Coste estimado",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 5,
+        "h": 4
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^cost$/"
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&measures=cost",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "description": "Coste estimado por Claude Code de todas las llamadas del periodo."
+    },
+    {
+      "id": 112,
+      "type": "stat",
+      "title": "Modelos sin precio",
+      "gridPos": {
+        "x": 5,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(claude_model_without_price_messages) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Modelos de tus conversaciones que no están en collectors/claude/prices.json. En rojo, su coste sin telemetría queda como «missing». Pulsa el panel para ver cuáles en una pestaña nueva (http://localhost:9100/prices). Añádelos a prices.json y reinicia claude-collector.",
+      "links": [
+        {
+          "title": "Ver precios de los modelos",
+          "url": "http://localhost:9100/prices",
+          "targetBlank": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Tokens",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: M",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^tokens_m$/"
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&measures=tokens&calc=tokens_m:tokens/1000000",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "description": "Entrada, salida y caché sumados, en millones."
+    },
+    {
+      "id": 4,
+      "title": "USD por millón de tokens",
+      "type": "stat",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&measures=cost,tokens&calc=usd_mtok:cost/(tokens/1000000)",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^usd_mtok$/",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "description": "Precio medio efectivo del periodo. Baja si se usan modelos más baratos o más caché."
+    },
+    {
+      "id": 5,
+      "title": "Acierto de caché",
+      "type": "stat",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&measures=input,cache_read,cache_write&calc=cache_hit:cache_read/(cache_read%2Bcache_write%2Binput)",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^cache_hit$/",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "description": "Lectura de caché entre lectura, creación de caché y entrada."
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Sesiones con actividad",
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "links": [
+            {
+              "title": "Ver las sesiones",
+              "targetBlank": true,
+              "url": "http://localhost:9100/sessions?from=${__from}&to=${__to}&project=${project:csv}"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^distinct_session$/"
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&measures=messages&distinct=session",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "description": "Pulsa la cifra para ver la lista de sesiones."
+    },
+    {
+      "id": 7,
+      "title": "Evolución diaria",
+      "type": "timeseries",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 16,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=day&measures=cost,tokens&calc=tokens_m:tokens/1000000",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "barWidthFactor": 0.7,
+            "showPoints": "never",
+            "axisPlacement": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Coste"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "left"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tokens"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: M"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 5
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "Coste (barras, eje izquierdo) y tokens en millones (línea, eje derecho) de cada día del periodo elegido.",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "day": true,
+              "tokens": true
+            },
+            "renameByName": {
+              "cost": "Coste",
+              "tokens_m": "Tokens"
+            }
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "time",
+                "destinationType": "time"
+              }
+            ]
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "time",
+                "desc": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "bargauge",
+      "title": "Coste por effort",
+      "gridPos": {
+        "x": 16,
+        "y": 5,
+        "w": 8,
+        "h": 5
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#5794F2"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": "/^cost$/"
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "minVizHeight": 14,
+        "valueMode": "color"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=effort&measures=cost&sort=-cost",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "description": "Parte del gasto de cada nivel de esfuerzo de razonamiento: muestra lo que cuesta trabajar siempre en un nivel alto."
+    },
+    {
+      "id": 9,
+      "title": "Coste por proyecto",
+      "type": "bargauge",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 10,
+        "w": 8,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=project&measures=cost&sort=-cost",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#5794F2"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": "/^cost$/"
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "minVizHeight": 14,
+        "valueMode": "color"
+      },
+      "description": "Coste del periodo por proyecto, a partir del mapa de sesiones (carpeta de cada conversación)."
+    },
+    {
+      "type": "row",
+      "title": "Reparto del gasto",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 1
+      },
+      "id": 10,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "title": "Cuota de coste y de tokens por modelo",
+      "type": "barchart",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 11
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=model&measures=cost,tokens&top=model:10:cost&other=otros&calc=cost_share:cost/total_cost%3Btokens_share:tokens/total_tokens&sort=-cost",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cuota del coste"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cuota de tokens"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "horizontal",
+        "xField": "Modelo",
+        "stacking": "none",
+        "showValue": "auto",
+        "barWidth": 0.85,
+        "groupWidth": 0.75,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xTickLabelRotation": 0
+      },
+      "description": "Los diez modelos con más coste: su parte del coste total frente a su parte de los tokens. Una barra de tokens mucho mayor que la de coste es un modelo barato; al revés, caro. Otros suma el resto.",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "cost": true,
+              "tokens": true
+            },
+            "renameByName": {
+              "model": "Modelo",
+              "cost_share": "Cuota del coste",
+              "tokens_share": "Cuota de tokens"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Cuota del coste",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Detalle por modelo y effort",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Coste (USD)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=model,effort&measures=cost&sort=-cost",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {
+              "model": "Modelo",
+              "effort": "Effort",
+              "cost": "Coste (USD)"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Coste (USD)",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "description": "Coste del periodo para cada combinación de effort y modelo, con el total en el pie.",
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum"
+          ],
+          "fields": [],
+          "countRows": false
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Sesiones, skills y prompts",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 1
+      },
+      "id": 13,
+      "panels": []
+    },
+    {
+      "id": 14,
+      "title": "Contexto de las sesiones",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(clamp_max(sum by (session, label) (claude_context_tokens{project=~\"$project\"}) / sum by (session, label) (claude_context_limit_tokens{project=~\"$project\"}), 1)) and on(session) (claude_session_updated_seconds >= ${__from:date:seconds} and claude_session_updated_seconds <= ${__to:date:seconds})",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (session, label) (claude_context_tokens{project=~\"$project\"}) / 1e3) and on(session) (claude_session_updated_seconds >= ${__from:date:seconds} and claude_session_updated_seconds <= ${__to:date:seconds})",
+          "legendFormat": "",
+          "refId": "B",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(clamp_min(sum by (session, label) (claude_context_limit_tokens{project=~\"$project\"}) - sum by (session, label) (claude_context_tokens{project=~\"$project\"}), 0) / 1e3) and on(session) (claude_session_updated_seconds >= ${__from:date:seconds} and claude_session_updated_seconds <= ${__to:date:seconds})",
+          "legendFormat": "",
+          "refId": "C",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (session, label) (claude_context_limit_tokens{project=~\"$project\"}) / 1e3) and on(session) (claude_session_updated_seconds >= ${__from:date:seconds} and claude_session_updated_seconds <= ${__to:date:seconds})",
+          "legendFormat": "",
+          "refId": "D",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sesión"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 560
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Abrir el detalle de la sesión",
+                    "url": "http://localhost:9100/session/${__data.fields.session}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "session"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "% usado"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 0.6
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.85
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Usado"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: k"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Libre"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: k"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Límite"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: k"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Sesiones con actividad dentro del periodo elegido, hasta las 30 más recientes: el porcentaje de la ventana de contexto en uso en su último mensaje, los tokens usados, los libres y el límite. Pulsa una sesión para abrir su detalle.",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "label": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "session": 5
+            },
+            "renameByName": {
+              "label": "Sesión",
+              "Value #A": "% usado",
+              "Value #B": "Usado",
+              "Value #C": "Libre",
+              "Value #D": "Límite"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "% usado",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "links": [
+        {
+          "title": "Ver todas las sesiones",
+          "targetBlank": true,
+          "url": "http://localhost:9100/sessions?from=${__from}&to=${__to}&project=${project:csv}"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Uso de skills y comandos (veces)",
+      "type": "table",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/skills?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=skill&measures=as_command,as_skill",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Como comando"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 260
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Como skill"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Cada comando propio ejecutado y cada skill cargada en el periodo, leídos de las conversaciones (con su nombre real, que la telemetría oculta): cuántas veces como comando, escrito por ti, y cuántas como skill, cargada por Claude. El coste de cada comando está en la tabla siguiente.",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {
+              "skill": "Nombre",
+              "as_command": "Como comando",
+              "as_skill": "Como skill"
+            },
+            "indexByName": {
+              "skill": 0,
+              "as_command": 1,
+              "as_skill": 2
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Como comando",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "Modelos y origen por comando",
+      "type": "table",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/commands?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=command,model,origin&measures=cost",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          },
+          "unit": "currencyUSD",
+          "decimals": 2
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^Coste/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 260
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Coste total",
+            "desc": true
+          }
+        ]
+      },
+      "description": "Coste de los turnos que lanzó cada comando, separado por modelo y por origen: sdk es el hilo principal, agent:... son subagentes y prompt_suggestion, compact o web_search_tool son llamadas de fondo. Responde a «qué modelos se usaron al lanzar este comando».",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "command": "Comando",
+              "model": "Modelo",
+              "origin": "Origen",
+              "cost": "Coste"
+            },
+            "indexByName": {
+              "command": 0,
+              "model": 1,
+              "origin": 2,
+              "cost": 3
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Coste",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "binary": {
+              "left": "Coste",
+              "operator": "*",
+              "right": "1"
+            },
+            "alias": "Coste por origen"
+          }
+        },
+        {
+          "id": "groupToNestedTable",
+          "options": {
+            "showSubframeHeaders": true,
+            "fields": {
+              "Comando": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "Coste": {
+                "aggregations": [
+                  "sum"
+                ],
+                "operation": "aggregate"
+              }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Coste (sum)": "Coste total"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Prompts más caros",
+      "type": "table",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 62,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/prompts?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=prompt_id,session,project,model,prompt&measures=cost,messages&sort=-cost&limit=15&mask=${prompt_text}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Coste"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sesión"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Abrir la sesión",
+                    "targetBlank": true,
+                    "url": "http://localhost:9100/session/${__value.raw}"
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Texto"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              },
+              {
+                "id": "custom.minWidth",
+                "value": 360
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Los 15 turnos más caros: un prompt y todas las llamadas al modelo que lo respondieron. «Modelo» es el que más costó en ese turno. El texto (hasta 300 caracteres; pulsa la celda para verlo entero) se muestra u oculta con el selector «Texto de los prompts» de arriba; oculto, el colector envía asteriscos. Sale de las conversaciones, así que incluye lo hecho con la pila parada.",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "prompt_id": true,
+              "messages": true
+            },
+            "renameByName": {
+              "prompt": "Texto",
+              "project": "Proyecto",
+              "session": "Sesión",
+              "model": "Modelo",
+              "cost": "Coste"
+            },
+            "indexByName": {
+              "prompt": 0,
+              "project": 1,
+              "session": 2,
+              "model": 3,
+              "cost": 4
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "title": "Herramientas",
+      "type": "table",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 72,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/tools?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=tool&measures=calls,bytes,duration_ms,timed&sort=-bytes&calc=tokens_k:bytes/4/1000%3Bavg_ms:duration_ms/timed",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Llamadas"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bytes devueltos"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#2EC4B6"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tokens aprox."
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: k"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#2EC4B6"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duración media"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2994A"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "description": "Por herramienta: cuántas veces se llamó, cuántos bytes devolvió (entran en el contexto y se releen en las llamadas siguientes), esos bytes como tokens aproximados (bytes entre 4, en miles: una estimación) y cuánto tardó de media. Sale de las conversaciones, así que incluye lo hecho con la pila parada. La duración va de la llamada a su resultado e incluye la espera a que apruebes un permiso. Las salidas muy grandes que Claude Code guarda aparte cuentan por la parte que queda en la conversación.",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "duration_ms": true,
+              "timed": true
+            },
+            "renameByName": {
+              "tool": "Herramienta",
+              "calls": "Llamadas",
+              "bytes": "Bytes devueltos",
+              "tokens_k": "Tokens aprox.",
+              "avg_ms": "Duración media"
+            },
+            "indexByName": {
+              "tool": 0,
+              "calls": 1,
+              "bytes": 2,
+              "tokens_k": 3,
+              "avg_ms": 4
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "Mejoras",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 81,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 102,
+      "title": "Mejoras detectadas",
+      "type": "stat",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 82,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/coach/summary?from=${__from}&to=${__to}&project=${project:csv}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#5794F2"
+          },
+          "noValue": "—",
+          "links": [
+            {
+              "title": "Abrir el informe de mejoras",
+              "targetBlank": true,
+              "url": "http://localhost:9100/report?from=${__from}&to=${__to}&project=${project:csv}"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^hallazgos$/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "description": "Hallazgos del informe de mejoras para el rango de tiempo y los proyectos elegidos; el mismo cálculo que el informe que se descarga. Pulsa para abrir el informe."
+    },
+    {
+      "id": 103,
+      "title": "Impacto estimado",
+      "type": "stat",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 82,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/coach/summary?from=${__from}&to=${__to}&project=${project:csv}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#5794F2"
+          },
+          "noValue": "—",
+          "decimals": 2,
+          "links": [
+            {
+              "title": "Abrir el informe de mejoras",
+              "targetBlank": true,
+              "url": "http://localhost:9100/report?from=${__from}&to=${__to}&project=${project:csv}"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^impacto_usd$/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "description": "Suma del impacto en dólares de los hallazgos del rango y los proyectos elegidos. Es un orden de magnitud del gasto evitable, en coste equivalente; no es un ahorro garantizado."
+    },
+    {
+      "id": 104,
+      "title": "Errores evitables de herramientas",
+      "type": "stat",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 82,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/tools?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&measures=calls,avoidable_errors&calc=rate:avoidable_errors/calls",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#5794F2"
+          },
+          "noValue": "—",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^rate$/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "description": "Parte de las llamadas a herramientas que fallaron en el rango, sin contar rechazos (también de planes), bloqueos, interrupciones ni comandos que terminan con error."
+    },
+    {
+      "id": 105,
+      "title": "Compactaciones e interrupciones",
+      "type": "stat",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 82,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/compactions?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&measures=compactions",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/interrupts?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&measures=interrupts",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#5794F2"
+          },
+          "noValue": "—"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "compactions"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Compactaciones"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "interrupts"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Interrupciones"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "description": "Compactaciones de contexto y respuestas interrumpidas en el rango."
+    },
+    {
+      "id": 111,
+      "title": "Hallazgos",
+      "type": "table",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 86,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/coach/findings?from=${__from}&to=${__to}&project=${project:csv}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Sin hallazgos en este periodo",
+          "custom": {
+            "cellOptions": {
+              "type": "auto",
+              "wrapText": false
+            },
+            "inspect": true
+          },
+          "links": [
+            {
+              "title": "Abrir el informe de mejoras",
+              "targetBlank": true,
+              "url": "http://localhost:9100/report?from=${__from}&to=${__to}&project=${project:csv}"
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Impacto"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "noValue",
+                "value": "—"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 50
+              },
+              {
+                "id": "noValue",
+                "value": "—"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Casos"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              },
+              {
+                "id": "noValue",
+                "value": "—"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severidad"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "alta": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "media": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "baja": {
+                        "color": "text",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "noValue",
+                "value": "—"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Regla"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hallazgo"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "id": 0,
+              "severidad": 1,
+              "regla": 2,
+              "hallazgo": 3,
+              "impacto_usd": 4,
+              "casos": 5,
+              "recomendacion": 6,
+              "evidencia": 7
+            },
+            "renameByName": {
+              "id": "Id",
+              "severidad": "Severidad",
+              "regla": "Regla",
+              "hallazgo": "Hallazgo",
+              "impacto_usd": "Impacto",
+              "casos": "Casos",
+              "recomendacion": "Recomendación",
+              "evidencia": "Evidencia"
+            }
+          }
+        }
+      ],
+      "description": "Cada mejora detectada en el rango y los proyectos elegidos, de mayor a menor severidad: qué pasa, cuánto pesa y qué cambiar. Es el mismo cálculo que el informe; el informe añade sesiones de ejemplo y las tablas de apoyo. Pasa el ratón por una celda o usa «Inspect» para leer textos largos. Cada fila ocupa una línea: pulsa una celda para ver su texto entero, o abre el informe de mejoras."
+    },
+    {
+      "id": 106,
+      "title": "Hallazgos por regla",
+      "type": "table",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 96,
+        "w": 10,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/coach/rules?from=${__from}&to=${__to}&project=${project:csv}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Sin hallazgos en este periodo",
+          "links": [
+            {
+              "title": "Abrir el informe de mejoras",
+              "targetBlank": true,
+              "url": "http://localhost:9100/report?from=${__from}&to=${__to}&project=${project:csv}"
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Impacto"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "regla": "Regla",
+              "hallazgos": "Hallazgos",
+              "alta": "Severidad alta",
+              "impacto_usd": "Impacto"
+            }
+          }
+        }
+      ],
+      "description": "Hallazgos del rango y los proyectos elegidos, agrupados por regla y ordenados por impacto. El detalle está en la tabla «Hallazgos» y en el informe."
+    },
+    {
+      "id": 107,
+      "title": "Errores evitables por herramienta y modelo",
+      "type": "table",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 10,
+        "y": 96,
+        "w": 14,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/tools?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=tool,model&measures=calls,avoidable_errors&calc=rate:avoidable_errors/calls&nonzero=avoidable_errors&sort=-avoidable_errors",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tasa"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "#FF9830",
+                      "value": 0.05
+                    },
+                    {
+                      "color": "#F2495C",
+                      "value": 0.15
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {
+              "tool": "Herramienta",
+              "model": "Modelo",
+              "calls": "Llamadas",
+              "avoidable_errors": "Errores",
+              "rate": "Tasa"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Errores",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "description": "Herramientas y modelos con algún error evitable en el rango. Naranja desde el 5 % y rojo desde el 15 %: ahí suele compensar una regla en CLAUDE.md o usar otro modelo."
+    },
+    {
+      "id": 108,
+      "title": "Coste por mensaje de cada modelo, por semana",
+      "type": "timeseries",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 104,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=week,model&measures=cost,messages&calc=cost_per_message:cost/messages&nonzero=cost_per_message",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 2,
+            "showPoints": "always",
+            "pointSize": 5,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Coste medio por mensaje de cada modelo, las últimas 13 semanas (solo semanas con coste conocido). Sirve para comprobar el efecto de cambiar de modelo o de effort.",
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "model",
+            "rowField": "week",
+            "valueField": "cost_per_message"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "week\\model": "Semana"
+            }
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "Semana",
+                "destinationType": "time",
+                "dateFormat": "YYYY-MM-DD"
+              }
+            ]
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Semana"
+              }
+            ]
+          }
+        }
+      ],
+      "timeFrom": "14w",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 109,
+      "title": "Errores evitables por herramienta, por semana",
+      "type": "timeseries",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 104,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/data/tools?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=week,tool&measures=avoidable_errors,calls&top=tool:5:avoidable_errors&calc=rate:avoidable_errors/calls",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 2,
+            "showPoints": "always",
+            "pointSize": 5,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Tasa de error semanal de las cinco herramientas con más errores evitables, las últimas 13 semanas. Sirve para ver si una regla nueva en CLAUDE.md reduce los fallos.",
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "tool",
+            "rowField": "week",
+            "valueField": "rate"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "week\\tool": "Semana"
+            }
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "Semana",
+                "destinationType": "time",
+                "dateFormat": "YYYY-MM-DD"
+              }
+            ]
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Semana"
+              }
+            ]
+          }
+        }
+      ],
+      "timeFrom": "14w",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 110,
+      "title": "Bytes devueltos al contexto por herramienta",
+      "type": "table",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "coach-claude"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 113,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://claude-collector:9100/coach/tool_bytes?from=${__from}&to=${__to}&project=${project:csv}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Media por llamada"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Máximo"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tokens aprox."
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "herramienta": "Herramienta",
+              "resultados": "Llamadas",
+              "bytes_medios": "Media por llamada",
+              "bytes_max": "Máximo",
+              "bytes_total": "Total",
+              "tokens_aprox": "Tokens aprox."
+            }
+          }
+        }
+      ],
+      "description": "Lo que cada herramienta devuelve al contexto en el rango y los proyectos elegidos, según los eventos de telemetría. Las que más devuelven son las que más llenan el contexto y más compactaciones provocan. Tokens aprox. es el total entre 4."
+    },
+    {
+      "type": "row",
+      "title": "Por hora",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 120,
+        "w": 24,
+        "h": 1
+      },
+      "id": 19,
+      "panels": [
+        {
+          "id": 20,
+          "type": "timeseries",
+          "title": "Tokens por modelo (por hora)",
+          "gridPos": {
+            "x": 0,
+            "y": 121,
+            "w": 12,
+            "h": 9
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "suffix: M",
+              "custom": {
+                "drawStyle": "bars",
+                "stacking": {
+                  "mode": "normal"
+                },
+                "fillOpacity": 70,
+                "lineWidth": 1,
+                "showPoints": "never"
+              },
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "coach-claude"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=hour,model&measures=tokens&calc=tokens_m:tokens/1000000",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "",
+              "columns": []
+            }
+          ],
+          "description": "Tokens de cada hora (en la zona horaria del colector), separados por modelo, en millones.",
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transformations": [
+            {
+              "id": "groupingToMatrix",
+              "options": {
+                "columnField": "model",
+                "rowField": "hour",
+                "valueField": "tokens_m"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "hour\\model": "Hora"
+                }
+              }
+            },
+            {
+              "id": "convertFieldType",
+              "options": {
+                "conversions": [
+                  {
+                    "targetField": "Hora",
+                    "destinationType": "time",
+                    "dateFormat": "YYYY-MM-DD HH:mm"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Hora"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "type": "timeseries",
+          "title": "Coste por modelo y effort (por hora)",
+          "gridPos": {
+            "x": 12,
+            "y": 121,
+            "w": 12,
+            "h": 9
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "coach-claude"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "custom": {
+                "drawStyle": "bars",
+                "stacking": {
+                  "mode": "normal"
+                },
+                "fillOpacity": 70,
+                "lineWidth": 1,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "coach-claude"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=hour,model_effort&measures=cost",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "",
+              "columns": []
+            }
+          ],
+          "description": "Coste de cada hora separado por modelo y nivel de esfuerzo. El effort solo se conoce en las peticiones que informó la telemetría; el resto aparece como «sin telemetría».",
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transformations": [
+            {
+              "id": "groupingToMatrix",
+              "options": {
+                "columnField": "model_effort",
+                "rowField": "hour",
+                "valueField": "cost"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "hour\\model_effort": "Hora"
+                }
+              }
+            },
+            {
+              "id": "convertFieldType",
+              "options": {
+                "conversions": [
+                  {
+                    "targetField": "Hora",
+                    "destinationType": "time",
+                    "dateFormat": "YYYY-MM-DD HH:mm"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Hora"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "project",
+        "label": "Proyecto",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "query_result(count by (project) (claude_session_project))",
+          "refId": "project"
+        },
+        "definition": "query_result(count by (project) (claude_session_project))",
+        "regex": "/project=\"([^\"]+)\"/",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      },
+      {
+        "name": "sessions",
+        "label": "Sesiones",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(claude_session_project{project=~\"$project\"}, session_id)",
+          "refId": "sessions"
+        },
+        "definition": "label_values(claude_session_project{project=~\"$project\"}, session_id)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1,
+        "hide": 2,
+        "allValue": ".*"
+      },
+      {
+        "name": "prompt_text",
+        "label": "Texto de los prompts",
+        "type": "custom",
+        "query": "Oculto : prompt, Visible : none",
+        "options": [
+          {
+            "text": "Oculto",
+            "value": "prompt",
+            "selected": true
+          },
+          {
+            "text": "Visible",
+            "value": "none",
+            "selected": false
+          }
+        ],
+        "current": {
+          "text": "Oculto",
+          "value": "prompt",
+          "selected": true
+        },
+        "multi": false,
+        "includeAll": false,
+        "hide": 0,
+        "skipUrlSync": false,
+        "description": "Oculto: el colector envía asteriscos en lugar del texto de los prompts (no llega al navegador)."
+      }
+    ]
+  },
+  "description": "Coste, tokens, sesiones, skills y prompts de Claude Code en un solo dashboard. Sigue el selector de tiempo y el de proyecto; el coste es una estimación del cliente, no una factura. El coste viene del registro por petición del colector (ADR 0002): el de la telemetría cuando existe y, si no, la tabla de precios.",
+  "links": [
+    {
+      "title": "Resumen IA (todas las herramientas)",
+      "type": "link",
+      "url": "/d/ia-overview",
+      "icon": "dashboard",
+      "targetBlank": false
+    },
+    {
+      "title": "Informe de mejoras",
+      "type": "link",
+      "icon": "doc",
+      "targetBlank": true,
+      "tooltip": "Abre en una pestaña nueva el informe del rango y los proyectos elegidos; desde ahí se descarga en .md para compartirlo con una IA",
+      "url": "http://localhost:9100/report?from=${__from}&to=${__to}&project=${project:csv}",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "tags": []
+    },
+    {
+      "title": "Precios de los modelos",
+      "type": "link",
+      "icon": "info",
+      "targetBlank": true,
+      "tooltip": "Abre en una pestaña nueva tus modelos con su precio, uso y coste estimado, y la tabla de precios completa (lo mismo que tools/check_claude_prices.py)",
+      "url": "http://localhost:9100/prices",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "tags": []
+    }
+  ]
+}

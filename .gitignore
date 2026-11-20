@@ -1,0 +1,39 @@
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
+docker-compose.override.yml
+.claude/settings.local.json
+
+# Lo que genera el instalador
+*.lnk
+installer/backups/
+
+# Datos y salidas locales (bases de datos, informes generados, logs)
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+informe*.md
+report*.md
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editores y sistema operativo
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Snapshot HTML de arc42 (se genera)
+docs/architecture/arc42-snapshot.html
