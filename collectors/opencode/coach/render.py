@@ -1,6 +1,8 @@
 """Markdown rendering of the report, written to be pasted into an AI chat."""
 import json
 
+from common.markdown import _rate, pct, table, tok, usd, usd4  # noqa: F401
+
 AI_PROMPT = """Eres un revisor experto en el uso de agentes de programación (OpenCode). Este informe resume cómo los usa una persona: coste, modelos, agentes, herramientas, errores, contexto, skills y comandos. No contiene el texto de las conversaciones.
 
 Tu tarea:
@@ -20,22 +22,6 @@ LABELS = {
 PCT = {"cache_hit", "tool_error_rate", "cost_share", "error_rate", "rate", "subagent_cost_share"}
 
 
-def usd(v):
-    return "—" if v is None else "%.2f $" % v if abs(v) >= 0.01 or v == 0 else "%.4f $" % v
-
-
-def usd4(v):
-    return "—" if v is None else "%.4f $" % v
-
-
-def tok(v):
-    return "%.1f M" % (v / 1e6) if v >= 1e6 else "%.0f k" % (v / 1e3) if v >= 1e3 else "%d" % v
-
-
-def pct(v):
-    return "%.1f %%" % (100 * v)
-
-
 def fmt(key, v):
     if v is None:
         return "—"
@@ -46,17 +32,6 @@ def fmt(key, v):
     if key.startswith("tokens"):
         return tok(v)
     return str(v)
-
-
-def _rate(a, b):
-    return a / b if b else 0.0
-
-
-def table(headers, rows):
-    out = ["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"]
-    for r in rows:
-        out.append("| " + " | ".join(str(c).replace("|", "\\|") for c in r) + " |")
-    return "\n".join(out)
 
 
 def cut(rows, n=10):

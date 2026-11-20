@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import helpers  # noqa: E402
 
 helpers.use_collector("common")
-from common import ledger, security  # noqa: E402
+from common import html_page, ledger, markdown, security  # noqa: E402
 
 H = 3600 * 1000
 NIGHT = 1795044600000  # 2026-11-18T23:30:00Z = 2026-11-19 00:30 in Madrid
@@ -20,6 +20,18 @@ ROWS = [
 
 def q(**kw):
     return {k.replace("__", "."): [str(v)] for k, v in kw.items()}
+
+
+class SharedPieces(unittest.TestCase):
+    def test_markdown_cells_stay_on_one_line(self):
+        """Names read from conversations cannot add rows or text to the report pasted into an AI chat."""
+        t = markdown.table(["skill"], [["a|b\n| injected | row |\r\x00"]])
+        self.assertEqual(t.count("\n"), 2)                       # header, rule, one row
+        self.assertIn("a\\|b", t)
+
+    def test_html_escapes(self):
+        self.assertEqual(html_page.e('<b a="1">'), "&lt;b a=&quot;1&quot;&gt;")
+        self.assertEqual(html_page.when(0), "—")
 
 
 class Buckets(unittest.TestCase):
