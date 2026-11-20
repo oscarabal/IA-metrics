@@ -322,6 +322,9 @@ try {
   docker compose --profile claude --profile opencode stop | Out-Null
   docker compose up -d --remove-orphans
   if ($LASTEXITCODE -ne 0) { throw 'docker compose up falló. Revisa la salida anterior.' }
+  Say 'Esperando a que los servicios estén listos...'
+  docker compose up -d --wait --wait-timeout 180 *> $null
+  if ($LASTEXITCODE -ne 0) { Say 'Algún servicio no está sano todavía. Revísalo con: docker compose ps' 'Yellow' }
 } finally { Pop-Location }
 
 Say ''

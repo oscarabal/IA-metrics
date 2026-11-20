@@ -26,6 +26,8 @@ goto wait
 echo Levantando IA-metrics...
 docker compose up -d
 if errorlevel 1 goto fail
+echo Esperando a que los servicios esten listos...
+docker compose up -d --wait --wait-timeout 180 >nul 2>&1 || echo AVISO: algun servicio no esta sano todavia. Revisalo con: docker compose ps
 start "" http://localhost:3000
 echo.
 echo Listo. Grafana: http://localhost:3000

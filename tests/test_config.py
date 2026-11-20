@@ -62,6 +62,20 @@ class Compose(unittest.TestCase):
         for n, s in self.c["services"].items():
             self.assertNotRegex(s["image"], r":latest$|^[^:]+$", n)
 
+    def test_healthchecks(self):
+        """Prometheus, Grafana and both collectors report their health; Grafana waits for Prometheus."""
+        for n in ("prometheus", "grafana", "claude-collector", "opencode-collector"):
+            self.assertIn("healthcheck", self.c["services"][n], n)
+            self.assertTrue(self.c["services"][n]["healthcheck"]["test"], n)
+        self.assertEqual(self.c["services"]["grafana"]["depends_on"]["prometheus"]["condition"], "service_healthy")
+        for n, port in (("claude-collector", 9100), ("opencode-collector", 9101)):
+            self.assertIn("http://127.0.0.1:%d/health" % port, " ".join(self.c["services"][n]["healthcheck"]["test"]))
+
+    def test_grafana_supported_branch(self):
+        """Grafana 12.1 is out of support (April 2026): keep a 13.x or later image."""
+        major = int(self.c["services"]["grafana"]["image"].split(":")[1].split(".")[0])
+        self.assertGreaterEqual(major, 13)
+
     def test_ports_loopback_only(self):
         for n, s in self.c["services"].items():
             for p in s.get("ports", []):
