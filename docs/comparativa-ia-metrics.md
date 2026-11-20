@@ -104,7 +104,7 @@ flowchart TD
 
 | | opencode-metrics | IA-metrics |
 | --- | --- | --- |
-| Series en Prometheus | 6.640 en cada lectura, 5.776 de ellas por día o semana | Las 5.776 sobran (el 87 %); se apagan con `LEGACY_DAY_METRICS=0` |
+| Series en Prometheus | 6.640 en cada lectura, 5.776 de ellas por día o semana | Retiradas las 5.776 por día o semana (el 87 %); el scrape de OpenCode ya no lee la base de datos |
 | Crecimiento | Lineal con el historial, reescrito cada 30 s durante 365 días | Prometheus solo guarda estado actual |
 | Lectura de la base de datos | Todo el historial en cada lectura (unos 3 s, límite de 25 s) | Incremental: 0,6 s la primera vez, casi nada después |
 | Consulta de un panel | PromQL con filtros de fecha encadenados | 116 ms (uso por día y modelo), 11 ms (prompts) |
@@ -124,7 +124,7 @@ flowchart TD
 | | claude-metrics | opencode-metrics | IA-metrics |
 | --- | --- | --- | --- |
 | Puertos | `127.0.0.1`, salvo el 8889 abierto a la red | `127.0.0.1` | `127.0.0.1` en todos; Prometheus, Loki y el collector (salvo el 4317) ni se publican |
-| Imágenes | `latest` en tres servicios | Versiones fijas | Versiones fijas (Grafana 12.1.10, con los CVE-2026-27880/27876 corregidos) |
+| Imágenes | `latest` en tres servicios | Versiones fijas | Versiones fijas (Grafana 13.2, rama con soporte); healthchecks en Prometheus, Grafana y los colectores |
 | Protección frente a DNS rebinding | No | No | Los colectores validan la cabecera `Host` |
 | Texto de prompts | En Loki 30 días si se activaba la opción | — | Solo en memoria del colector; el instalador ya no ofrece enviarlo a Loki |
 | Logs de Docker | Sin límite, con el exportador `debug` activo | Sin límite | 10 MB × 3 por servicio, sin `debug` |
@@ -135,8 +135,8 @@ flowchart TD
 | | Antes | Ahora |
 | --- | --- | --- |
 | Pruebas | Ninguna: un cambio de formato se veía mirando el dashboard | Datos de ejemplo de ambas herramientas, Loki falso, pruebas de equivalencia con las series antiguas, de cada URL de cada dashboard, de la tabla de precios, del contrato del informe y de la configuración |
-| Comprobadores | — | `check_claude_prices.py` (precios, campos y valores de tus conversaciones, sin contenido) y `check_opencode_equivalence.py` |
-| Dashboards | Editados a mano | Migraciones versionadas en `tools/migrations/`; el Resumen IA se genera con un script |
+| Comprobadores | — | `check_claude_prices.py` (precios, campos y valores de tus conversaciones, sin contenido); la equivalencia con las series antiguas queda en los tests (`tests/legacy_oracle.py`) |
+| Dashboards | Editados a mano | JSON provisionado, comprobado por los tests; el Resumen IA se genera con un script |
 | Decisiones | Sin ADR | ADR 0001 (pila única), 0002 (registro por petición y API), 0004 (pruebas) |
 | Repositorio | Saltos de línea mezclados | `.gitattributes` (LF; CRLF en `.bat` y `.ps1`) |
 | Documentación | Un README por proyecto | README en español e inglés con diagramas Mermaid, guía de cada dashboard |
@@ -153,9 +153,8 @@ flowchart TD
 
 ## Pendiente
 
-- Poner `LEGACY_DAY_METRICS=0`, borrar el código de las series antiguas y revisar la retención de Prometheus.
-- Unificar en `collectors/common/` el motor de reglas del informe (D1–D10) y las páginas de sesión, que siguen
-  duplicados.
+- Unificar en `collectors/common/` el motor de reglas del informe (D1–D10), que sigue duplicado (las páginas
+  HTML y el formato del informe ya son comunes).
 - Medir cuánto suponen las llamadas que Claude Code no escribe en la conversación (lo único que aún se pierde
   con la pila parada).
 - Alertas (presupuesto, contexto casi lleno) y documentación arc42.

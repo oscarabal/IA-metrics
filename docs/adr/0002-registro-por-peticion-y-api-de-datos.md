@@ -105,3 +105,7 @@ Análisis del código a 2026-11-20:
   sustituye por asteriscos en el colector, no en Grafana, para que no llegue al navegador (ni a «Inspect»
   ni a una descarga CSV). Con la `opencode.db` real: 1.628 turnos, 95 % con texto, el coste de los turnos
   cuadra con el total (188,19 $), primera lectura 0,6 s y consulta del panel 11 ms.
+- 2026-11-20, retirada: las series `*_day_*`/`*_week_*` (y `LEGACY_DAY_METRICS`, las agregaciones diarias de
+  Loki en `coach.db` y `tools/check_opencode_equivalence.py`) se quitan de los colectores. Su código pasa,
+  sin cambios, a `tests/legacy_oracle.py`: los tests de equivalencia siguen comparando la API con esa
+  segunda implementación. Los scripts de `tools/migrations/`, ya aplicados, se borran.

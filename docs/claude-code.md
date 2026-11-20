@@ -145,7 +145,7 @@ archivada en `coach.db`.
 | `CLAUDE_CONTEXT_LIMIT_DEFAULT`, `CLAUDE_CONTEXT_LIMITS` | Límite de contexto supuesto y excepciones por modelo. |
 | `CLAUDE_PROMPT_TEXT` | `0` para que el colector no lea el texto de los prompts. |
 | `TZ` | Zona horaria de los días y las horas. |
-| `LEGACY_DAY_METRICS` | `0` deja de publicar las series por día antiguas en Prometheus. |
+| `COACH_RETENTION_DAYS` | Días de historial que guarda `coach.db` (0, por defecto, lo guarda todo); se compacta una vez al día. |
 | `ALLOWED_HOSTS` | Nombres extra con los que abrir las páginas del colector. |
 
 ## Comprobaciones

@@ -22,14 +22,15 @@ docker compose up -d --force-recreate otel-collector    # aplicar cambios en con
 ## Estructura
 
 - `collectors/common/` — código compartido: `ledger.py` (motor de consultas y API `/data`, ADR 0002),
-  `security.py` (cabecera Host), `report_page.py` (página del informe).
+  `security.py` (cabecera Host), `report_page.py` (página del informe), `html_page.py` (CSS y helpers de las
+  páginas), `markdown.py` (formato del informe).
 - `collectors/*/ledger_source.py` — el registro por petición de cada herramienta: los conjuntos de
   datos que sirve `/data`. Mismas columnas en las dos; si añades una, añádela en ambas.
 - `collectors/claude/prices.json` + `pricing.py` — tabla de precios versionada por fecha para el coste
   de Claude Code sin telemetría. `index.hybrid_cost` es el único punto que decide el coste.
 - `collectors/claude/` — antiguo `session-map`: `map.py` (HTTP :9100), `index.py` (lectura incremental
   de las conversaciones: tokens, effort, herramientas, permisos, prompts), `pages.py`, `coach/` (informe,
-  reglas D1–D10 + C1–C6; `store.py` = `coach.db`, archivo de sesiones y costes de la telemetría).
+  reglas D1–D10 + C1–C6; `store.py` = `coach.db`, archivo de sesiones y costes de la telemetría, con retención `COACH_RETENTION_DAYS` y VACUUM diario).
 - `collectors/opencode/` — antiguo `exporter`: `exporter.py` (HTTP :9101, lectura de `opencode.db`),
   `session_page.py`, `api_prices.py` (precio de API de models.json para los mensajes que OpenCode guarda con
   coste 0: `hybrid` es el único punto que decide el coste de `/data`), `coach/` (reglas D1–D11).
@@ -59,18 +60,26 @@ docker compose up -d --force-recreate otel-collector    # aplicar cambios en con
   Prometheus, Loki y los puertos 4318/8889 del collector no se publican (no validan `Host`): solo con
   `docker-compose.debug.yml`. No vuelvas a publicarlos en `docker-compose.yml`.
 - **Logs de Docker limitados** (`x-logging`); no dejar el exportador `debug` activo en el collector.
+- **Healthchecks:** Prometheus, Grafana y los dos colectores (`/health`, ligero: no lo conviertas en una
+  lectura de datos). Loki y el OTel Collector no tienen shell en su imagen y van sin healthcheck.
+  `Iniciar-metricas.bat` y el instalador esperan con `docker compose up -d --wait`.
 - **Versiones de imagen fijadas**, nunca `latest`.
 - **Dashboards provisionados:** se editan en el JSON, no en la UI; el global se genera con
   `tools/dashboards/global_overview.py`. Datasources Infinity: `coach-claude` y `coach-opencode`.
   Los paneles nuevos leen `/data` (no series por día en Prometheus); `tests/test_*` comprueban que cada
   URL de cada dashboard devuelve los campos que el panel usa.
-- **Equivalencia antes de retirar:** las series `*_day_*`/`*_week_*` ya no las usa ningún panel, pero se
-  publican hasta poner `LEGACY_DAY_METRICS=0`; los tests comparan la API con ellas.
+- **Sin series por día en Prometheus:** las `*_day_*`/`*_week_*` se retiraron (ADR 0002); su cálculo vive
+  solo en `tests/legacy_oracle.py`, como oráculo de los tests de equivalencia. No lo importes desde los colectores.
+- **El scrape no lee datos:** `/metrics` de OpenCode sirve lo que calcula el hilo de fondo (`refresh_series`,
+  cada `SERIES_SECONDS`); el de Claude Code, lo que ya tiene el índice en memoria.
+- **Código común en `collectors/common/`:** `html_page.py` (CSS y helpers de las páginas) y `markdown.py`
+  (formato del informe; `cell` deja cada celda en una línea). Lo que sea igual en los dos colectores va ahí.
 - **Tablas de una línea por fila:** sin `wrapText` ni `cellHeight: lg`, y con `noValue` propio en las
   columnas estrechas (Grafana rellena las celdas vacías con el `noValue` del panel); los tests lo vigilan.
 - El texto del informe de mejoras siempre en español.
-- Las decisiones de arquitectura van en `docs/adr/`; la documentación arc42 irá en `docs/architecture/`
-  (skill `architecture-docs`).
+- Las decisiones de arquitectura van en `docs/adr/`; la documentación arc42 está en `docs/architecture/`
+  (skill `architecture-docs`): un cambio que toque contexto, bloques, despliegue, coste o privacidad actualiza
+  la sección que lo explica.
 
 ## Tests
 

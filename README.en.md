@@ -207,13 +207,14 @@ config/                     OTel Collector, Loki, Prometheus and Grafana provisi
 grafana/dashboards/         global/, claude/, opencode/ (one Grafana folder per subfolder)
 docs/                       dashboard guides, decisions (adr/) and documents of the original projects (legacy/)
 tests/                      tests (python tests/run.py) and sample data
-tools/                      dashboard migrations, Resumen IA generator and checkers
+tools/                      Resumen IA generator and price checker
 ```
 
 ## Useful commands
 
 ```bash
-docker compose up -d                                   # start with the profiles in .env
+docker compose up -d --wait                            # start with the profiles in .env and wait until healthy
+docker compose ps                                      # state and health (healthy) of each service
 docker compose restart grafana                         # apply changes to grafana/dashboards
 docker compose restart claude-collector opencode-collector   # apply changes to collectors/
 python tests/run.py                                    # tests (PyYAML for the configuration ones)
@@ -222,7 +223,6 @@ curl -s http://localhost:9100/prices/missing           # models without a price 
 docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d   # open the debugging ports
 python tools/check_claude_prices.py --fields           # which fields your conversations have (no values)
 python tools/check_claude_prices.py --values           # values of the category fields (effort, permissions…)
-python tools/check_opencode_equivalence.py <copy of opencode.db>   # API against the legacy series
 python tools/dashboards/global_overview.py             # regenerate Resumen IA
 docker compose exec claude-collector python /srv/claude/coach/cli.py report --window 30 > report.md
 docker compose exec opencode-collector python /srv/opencode/coach/cli.py report --window 30 > report.md
@@ -268,13 +268,11 @@ docker compose exec opencode-collector python /srv/opencode/coach/cli.py report 
 
 ## Next steps
 
-- Set `LEGACY_DAY_METRICS=0` (no panel uses the legacy per-day series any more), delete their code and
-  review Prometheus retention.
-- Unify the report's rule engine (D1–D10) and the session pages in `collectors/common/`.
-- arc42 documentation in `docs/architecture/` with the `architecture-docs` skill.
+- Unify the report's rule engine (D1–D10) in `collectors/common/` (the HTML pages and the report's
+  formatting already live there).
 - Alerts (budget, context nearly full).
 
-Architecture decisions (in Spanish): [docs/adr](docs/adr/README.md).
+Architecture (arc42, in Spanish): [docs/architecture](docs/architecture/README.md). Decisions (in Spanish): [docs/adr](docs/adr/README.md).
 
 Comparison with the original projects (in Spanish): [docs/comparativa-ia-metrics.md](docs/comparativa-ia-metrics.md).
 

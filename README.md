@@ -205,13 +205,14 @@ config/                     OTel Collector, Loki, Prometheus y provisioning de G
 grafana/dashboards/         global/, claude/, opencode/ (una carpeta de Grafana por subcarpeta)
 docs/                       guías de cada dashboard, decisiones (adr/) y documentos de los proyectos originales (legacy/)
 tests/                      tests (python tests/run.py) y datos de ejemplo
-tools/                      migraciones de dashboards, generador del Resumen IA y comprobadores
+tools/                      generador del Resumen IA y comprobador de precios
 ```
 
 ## Comandos útiles
 
 ```bash
-docker compose up -d                                   # arrancar con los perfiles de .env
+docker compose up -d --wait                            # arrancar con los perfiles de .env y esperar a que estén sanos
+docker compose ps                                      # estado y salud (healthy) de cada servicio
 docker compose restart grafana                         # aplicar cambios en grafana/dashboards
 docker compose restart claude-collector opencode-collector   # aplicar cambios en collectors/
 python tests/run.py                                    # tests (PyYAML para los de configuración)
@@ -220,7 +221,6 @@ curl -s http://localhost:9100/prices/missing           # modelos sin precio (910
 docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d   # abrir los puertos de depuración
 python tools/check_claude_prices.py --fields           # qué campos tienen tus conversaciones (sin valores)
 python tools/check_claude_prices.py --values           # valores de los campos de categoría (effort, permisos…)
-python tools/check_opencode_equivalence.py <copia de opencode.db>   # API frente a las series antiguas
 python tools/dashboards/global_overview.py             # regenerar el Resumen IA
 docker compose exec claude-collector python /srv/claude/coach/cli.py report --window 30 > informe.md
 docker compose exec opencode-collector python /srv/opencode/coach/cli.py report --window 30 > informe.md
@@ -265,13 +265,11 @@ docker compose exec opencode-collector python /srv/opencode/coach/cli.py report 
 
 ## Próximos pasos
 
-- Poner `LEGACY_DAY_METRICS=0` (las series por día antiguas ya no las usa ningún panel), borrar su código y
-  revisar la retención de Prometheus.
-- Unificar el motor de reglas del informe (D1–D10) y las páginas de sesión en `collectors/common/`.
-- Documentación arc42 en `docs/architecture/` con la skill `architecture-docs`.
+- Unificar el motor de reglas del informe (D1–D10) en `collectors/common/` (las páginas HTML y el formato
+  del informe ya están ahí).
 - Alertas (presupuesto, contexto casi lleno).
 
-Decisiones de arquitectura: [docs/adr](docs/adr/README.md).
+Arquitectura (arc42): [docs/architecture](docs/architecture/README.md). Decisiones: [docs/adr](docs/adr/README.md).
 
 Comparativa con los proyectos originales: [docs/comparativa-ia-metrics.md](docs/comparativa-ia-metrics.md).
 

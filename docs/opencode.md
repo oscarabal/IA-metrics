@@ -99,13 +99,12 @@ Reglas del informe (D1–D10 son comunes con Claude Code):
 | `OPENCODE_CONTEXT_LIMITS` | Límites de contexto de modelos que `models.json` no conoce (`proveedor/modelo=tokens`). |
 | `OPENCODE_CONTEXT_SESSIONS` | Cuántas sesiones recientes muestra el panel de contexto. |
 | `OPENCODE_SUBSCRIPTION_PROVIDERS` | Proveedores que pagas con suscripción (p. ej. `github-copilot`), separados por comas. Solo informativo: la página de precios los marca como «suscripción». |
-| `TZ`, `LEGACY_DAY_METRICS`, `ALLOWED_HOSTS` | Como en Claude Code: zona horaria, series antiguas y nombres extra. |
+| `TZ`, `ALLOWED_HOSTS` | Como en Claude Code: zona horaria y nombres extra. |
 
 ## Comprobaciones
 
 ```bash
 curl -s "http://localhost:9101/data/usage?group=model&sort=-cost&limit=5"   # coste por modelo
 curl -s http://localhost:9101/prices/missing                               # ¿algún modelo sin precio?
-python tools/check_opencode_equivalence.py <copia de opencode.db>          # API frente a las series antiguas
 docker compose logs --tail 50 opencode-collector
 ```
