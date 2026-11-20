@@ -1,8 +1,7 @@
 """Small SQLite store so the history does not depend on Loki's 30 days or on a restart.
 
 It keeps only metadata: each request (cost, model, query source, effort, session and output tokens), each
-tool event (tool, session, bytes returned, permission decision), daily aggregates of the Loki events for
-the Grafana series, and an archive of each session's index entry (ADR 0002) so its usage survives Claude
+tool event (tool, session, bytes returned, permission decision) and an archive of each session's index entry (ADR 0002) so its usage survives Claude
 Code deleting the conversation file (cleanupPeriodDays, 30 days by default). Never any text, titles or
 paths, nor the tool parameters. If the volume is missing it falls back to memory.
 """
@@ -10,8 +9,12 @@ import json
 import os
 import sqlite3
 import threading
+import time
 
 DB_PATH = os.environ.get("COACH_DB", "/state/coach.db")
+# Days of history kept; 0 keeps everything. Older requests, tool events and archived sessions are deleted.
+RETENTION_DAYS = int(os.environ.get("COACH_RETENTION_DAYS", "0") or 0)
+MAINTAIN_EVERY = 86400
 
 SCHEMA = """
 create table if not exists request_cost (
@@ -19,9 +22,7 @@ create table if not exists request_cost (
 create table if not exists tool_event (
     tool_use_id text, kind text, ts integer, session_id text, tool text, bytes integer, decision text, source text,
     primary key (tool_use_id, kind));
-create table if not exists daily (
-    day text, kind text, a text, b text, c text, value real,
-    primary key (day, kind, a, b, c));
+drop table if exists daily;
 create table if not exists session_archive (
     session_id text primary key, updated integer, data text);
 """
@@ -83,6 +84,7 @@ class Store:
         self.need_meta = set()   # stored requests still without session and effort
         self.saved_tools = set()
         self.archived = {}       # session id -> its "updated" when last archived
+        self.maintained_at = time.time()   # first maintenance a day after starting, not on every restart
 
     # ---------------------------------------------------------------- request costs
     def restore(self, ix):
@@ -166,24 +168,26 @@ class Store:
                     continue
         return n
 
-    # ---------------------------------------------------------------- daily aggregates
-    def put_daily(self, rows):
-        """rows: (day, kind, a, b, c, value); a day already stored is replaced, since Loki gives its full total."""
-        if not rows:
-            return
+    # ---------------------------------------------------------------- maintenance
+    def maintain(self, now=None):
+        """Once a day: drop what is older than COACH_RETENTION_DAYS (0, the default, keeps everything) and
+        compact the file. Returns the rows deleted, or None when it was not due."""
+        now = now or time.time()
+        if now - self.maintained_at < MAINTAIN_EVERY:
+            return None
+        self.maintained_at = now
+        deleted = 0
         with self.lock:
-            self.conn.executemany("insert or replace into daily values (?,?,?,?,?,?)", rows)
-            self.conn.commit()
-
-    def daily(self, kind, first_day, last_day):
-        with self.lock:
-            return self.conn.execute(
-                "select day, a, b, c, value from daily where kind = ? and day between ? and ?", (kind, first_day, last_day)).fetchall()
-
-    def first_day(self):
-        with self.lock:
-            row = self.conn.execute("select min(day) from daily").fetchone()
-        return row[0] if row else None
+            if RETENTION_DAYS > 0:
+                cutoff = int((now - RETENTION_DAYS * 86400) * 1000)
+                for sql in ("delete from request_cost where ts is not null and ts < ?",
+                            "delete from tool_event where ts is not null and ts < ?",
+                            "delete from session_archive where updated < ?"):
+                    deleted += self.conn.execute(sql, (cutoff,)).rowcount
+                self.conn.commit()
+            if self.persistent:
+                self.conn.execute("vacuum")
+        return deleted
 
 
 STORE = None

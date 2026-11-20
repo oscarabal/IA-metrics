@@ -29,14 +29,9 @@ MODELS = os.environ.get("OPENCODE_MODELS", "/cache/models.json")
 COMMANDS_DIR = os.environ.get("OPENCODE_COMMANDS_DIR", "/commands")
 GRAFANA_URL = os.environ.get("GRAFANA_URL", "http://localhost:3000/d/opencode-usage")
 PORT = int(os.environ.get("PORT", "9101"))
-WEEKS = int(os.environ.get("WEEKS", "13"))
 CONTEXT_SESSIONS = int(os.environ.get("CONTEXT_SESSIONS", "5"))
 # "provider/model=tokens,..." for models the cache does not know (custom providers, Copilot aliases)
 CONTEXT_LIMITS = os.environ.get("CONTEXT_LIMITS", "")
-# ADR 0002: per-day and per-week series, kept during the move to /data. 0 stops publishing them.
-LEGACY_DAY_METRICS = os.environ.get("LEGACY_DAY_METRICS", "1") != "0"
-_LEGACY = re.compile(r"^(# TYPE )?(opencode_(day|weekly)_|opencode_skill_scan_complete)")
-
 TOKEN_TYPES = {
     "input": "$.tokens.input",
     "output": "$.tokens.output",
@@ -67,46 +62,6 @@ left join project p on p.id = s.project_id
 where json_extract(m.data,'$.role') = 'assistant'
 group by 1,2,3,4
 """
-
-# One row per UTC day and label combination, over all history. The dashboard
-# picks a date range from these; days are UTC.
-PER_DAY = f"""
-select date(m.time_created/1000,'unixepoch'),
-       coalesce(json_extract(m.data,'$.providerID'),'unknown'),
-       coalesce(json_extract(m.data,'$.modelID'),'unknown'),
-       coalesce(json_extract(m.data,'$.agent'),'unknown'),
-       coalesce(p.worktree,''),
-       count(*),
-       coalesce(sum(json_extract(m.data,'$.cost')),0),
-       {_SUMS}
-from message m
-join session s on s.id = m.session_id
-left join project p on p.id = s.project_id
-where json_extract(m.data,'$.role') = 'assistant'
-group by 1,2,3,4,5
-"""
-
-SESSIONS_PER_DAY = """
-select date(s.time_created/1000,'unixepoch'), coalesce(p.worktree,''), count(*)
-from session s left join project p on p.id = s.project_id
-where s.parent_id is null
-group by 1,2
-"""
-
-# Monday of the ISO week, so the dashboard can label weeks by a plain date
-WEEKLY = f"""
-select date(m.time_created/1000,'unixepoch','weekday 0','-6 days'),
-       coalesce(p.worktree,''),
-       coalesce(sum(json_extract(m.data,'$.cost')),0),
-       {_TOTAL}
-from message m
-join session s on s.id = m.session_id
-left join project p on p.id = s.project_id
-where json_extract(m.data,'$.role') = 'assistant'
-  and m.time_created >= ?
-group by 1,2
-"""
-
 
 _limits = {"mtime": None, "data": {}}
 
@@ -305,18 +260,6 @@ where json_extract(p.data,'$.type') = 'tool' and json_extract(p.data,'$.tool') =
 """
 
 # A turn is every assistant message that answers the same user message
-TURN_COST = """
-select json_extract(data,'$.parentID'),
-       coalesce(json_extract(data,'$.providerID'),'unknown'),
-       coalesce(json_extract(data,'$.modelID'),'unknown'),
-       coalesce(json_extract(data,'$.agent'),'unknown'),
-       coalesce(sum(json_extract(data,'$.cost')),0)
-from message
-where json_extract(data,'$.role') = 'assistant'
-group by 1,2,3,4
-"""
-
-
 # A custom command leaves no mark in the database: OpenCode stores its template, already
 # expanded, as the text of the user message. It is recognised by that template's opening.
 USER_TEXTS = """
@@ -417,78 +360,29 @@ def refresh_skill_calls():
 
 
 def skill_loop():
-    woken = False
+    woken, series_at = False, 0
     while True:
         try:
             refresh_skill_calls()
-        except Exception:  # the next round retries; scrapes keep serving what is cached
-            pass
+        except Exception as e:  # the next round retries; scrapes keep serving what is cached
+            print("AVISO: fallo leyendo skills y comandos (%s)." % type(e).__name__, flush=True)
+        if time.time() - series_at >= SERIES_EVERY:
+            try:
+                refresh_series()
+                series_at = time.time()
+            except Exception as e:
+                print("AVISO: fallo leyendo opencode.db para /metrics (%s)." % type(e).__name__, flush=True)
         try:  # keep the improvement report's tool index warm, so /report.md answers quickly
             c = connect()
             try:
                 coach_index.INDEX.refresh(c)
-                # series for the «Mejoras» row and the data its findings panels build the report from,
-                # cached so neither a scrape nor a panel reads the database
-                coach_metrics.refresh(c, sys.modules[__name__], WEEKS, force=woken)
+                # the data the findings panels and /data build from, cached so neither reads the database
+                coach_metrics.refresh(c, sys.modules[__name__], force=woken)
             finally:
                 c.close()
-        except Exception:
-            pass
+        except Exception as e:
+            print("AVISO: fallo actualizando el informe (%s)." % type(e).__name__, flush=True)
         woken = coach_metrics.wait(30)
-
-
-def skill_usage(c):
-    """Activations and cost per skill and per custom command, in total and by model and agent.
-
-    The cost of a skill or command cannot be isolated, so it is the cost of the whole turn
-    (every assistant message answering one user message) that loaded or ran it. When one
-    turn loads several skills the cost is split equally among them. The by-model figures
-    split that same cost by the model and agent that answered; an activation is credited to
-    the model and agent of the message that loaded the skill, or, for a command, to the one
-    that spent most in the turn it launched.
-    """
-    turns = {}  # user message -> {(provider, model, agent): cost}
-    for parent, prov, model, agent, cost in c.execute(TURN_COST):
-        turns.setdefault(parent, {})[(prov, model, agent)] = cost
-    turn_cost = {parent: sum(parts.values()) for parent, parts in turns.items()}
-    with _skills_lock:
-        calls = list(_skills["calls"].values())
-        commands = list(_skills["commands"].items())
-    activations, cost, acts_by, cost_by = {}, {}, {}, {}
-    pending_turns = {}
-    for day, name, status, parent, wt, prov, model, agent, _ts in calls:
-        if status in ("pending", "running"):
-            continue
-        proj = project_name(wt)
-        result = "ok" if status == "completed" else "error"
-        key = (day, "skill", name, proj, result)
-        activations[key] = activations.get(key, 0) + 1
-        dkey = (day, "skill", name, proj, prov, model, agent, result)
-        acts_by[dkey] = acts_by.get(dkey, 0) + 1
-        if result == "ok" and parent:
-            pending_turns.setdefault(parent, (day, proj, set()))[2].add(name)
-    for parent, (day, proj, names) in pending_turns.items():
-        share = turn_cost.get(parent, 0) / len(names)
-        for name in names:
-            key = (day, "skill", name, proj)
-            cost[key] = cost.get(key, 0) + share
-            for (prov, model, agent), part in turns.get(parent, {}).items():
-                dkey = (day, "skill", name, proj, prov, model, agent)
-                cost_by[dkey] = cost_by.get(dkey, 0) + part / len(names)
-    for message_id, (day, name, wt, _ts) in commands:
-        proj = project_name(wt)
-        key = (day, "command", name, proj, "ok")
-        activations[key] = activations.get(key, 0) + 1
-        ckey = (day, "command", name, proj)
-        cost[ckey] = cost.get(ckey, 0) + turn_cost.get(message_id, 0)
-        parts = turns.get(message_id, {})
-        main = max(parts, key=parts.get) if parts else ("unknown", "unknown", "unknown")
-        dkey = (day, "command", name, proj) + main + ("ok",)
-        acts_by[dkey] = acts_by.get(dkey, 0) + 1
-        for (prov, model, agent), part in parts.items():
-            dkey = (day, "command", name, proj, prov, model, agent)
-            cost_by[dkey] = cost_by.get(dkey, 0) + part
-    return activations, cost, acts_by, cost_by
 
 
 def project_name(worktree):
@@ -547,7 +441,15 @@ def context_usage(c):
     return rows
 
 
-def collect():
+SERIES_EVERY = int(os.environ.get("SERIES_SECONDS", "60"))   # seconds between two readings of the database for /metrics
+_series_cache = {"lines": [], "at": 0, "seconds": 0.0}
+_series_lock = threading.Lock()
+
+
+def refresh_series():
+    """Read opencode.db for the Prometheus series (totals, models without a price, context of the recent
+    sessions) and cache them. Called from the background thread: a scrape never opens the database,
+    which on a Windows bind mount is slow."""
     out = []
     add = out.append
     started = time.time()
@@ -578,77 +480,6 @@ def collect():
         for model, n in sorted(models_without_price(c).items()):
             add('opencode_model_without_price_messages{model="%s"} %s' % (esc(model), n))
 
-        # Per day, for the dashboard's date range
-        day_cost, day_msgs, day_tok, days = {}, {}, {}, set()
-        for day, prov, model, agent, wt, n, cst, *toks in c.execute(PER_DAY):
-            lab = (day, prov, model, agent, project_name(wt))
-            days.add(day)
-            day_cost[lab] = day_cost.get(lab, 0) + cst
-            day_msgs[lab] = day_msgs.get(lab, 0) + n
-            for t, v in zip(TOKEN_TYPES, toks):
-                day_tok[lab + (t,)] = day_tok.get(lab + (t,), 0) + v
-        day_sess = {}
-        for day, wt, n in c.execute(SESSIONS_PER_DAY):
-            days.add(day)
-            day_sess[(day, project_name(wt))] = day_sess.get((day, project_name(wt)), 0) + n
-
-        def dl(lab):
-            return 'day="%s",%s' % (lab[0], labels(lab[1:5]))
-
-        add("# TYPE opencode_day_cost_usd gauge")
-        for lab, v in day_cost.items():
-            add("opencode_day_cost_usd{%s} %s" % (dl(lab), v))
-        add("# TYPE opencode_day_messages gauge")
-        for lab, v in day_msgs.items():
-            add("opencode_day_messages{%s} %s" % (dl(lab), v))
-        add("# TYPE opencode_day_tokens gauge")
-        for lab, v in day_tok.items():
-            add('opencode_day_tokens{%s,type="%s"} %s' % (dl(lab[:5]), lab[5], v))
-        add("# TYPE opencode_day_sessions gauge")
-        for (day, proj), v in day_sess.items():
-            add('opencode_day_sessions{day="%s",project="%s"} %s' % (day, esc(proj), v))
-        # Start of each UTC day as a sample value: PromQL cannot compare label
-        # strings, so the dashboard filters days by comparing this value.
-        add("# TYPE opencode_day_start_seconds gauge")
-        for day in sorted(days):
-            y, mo, d = (int(x) for x in day.split("-"))
-            add('opencode_day_start_seconds{day="%s"} %s' % (day, calendar.timegm((y, mo, d, 0, 0, 0))))
-
-        # Skills: activations and the cost of the turns that loaded them
-        skill_acts, skill_cost, skill_acts_by, skill_cost_by = skill_usage(c)
-        add("# TYPE opencode_day_skill_activations gauge")
-        for (day, kind, name, proj, result), n in skill_acts.items():
-            add('opencode_day_skill_activations{day="%s",kind="%s",skill="%s",project="%s",result="%s"} %s' % (day, kind, esc(name), esc(proj), result, n))
-        add("# TYPE opencode_skill_scan_complete gauge")
-        add("opencode_skill_scan_complete %s" % (1 if _skills["done"] else 0))
-        add("# TYPE opencode_day_skill_cost_usd gauge")
-        for (day, kind, name, proj), v in skill_cost.items():
-            add('opencode_day_skill_cost_usd{day="%s",kind="%s",skill="%s",project="%s"} %s' % (day, kind, esc(name), esc(proj), v))
-        add("# TYPE opencode_day_skill_detail_activations gauge")
-        for (day, kind, name, proj, prov, model, agent, result), n in skill_acts_by.items():
-            add('opencode_day_skill_detail_activations{day="%s",kind="%s",skill="%s",project="%s",provider="%s",model="%s",agent="%s",result="%s"} %s'
-                % (day, kind, esc(name), esc(proj), esc(prov), esc(model), esc(agent), result, n))
-        add("# TYPE opencode_day_skill_detail_cost_usd gauge")
-        for (day, kind, name, proj, prov, model, agent), v in skill_cost_by.items():
-            add('opencode_day_skill_detail_cost_usd{day="%s",kind="%s",skill="%s",project="%s",provider="%s",model="%s",agent="%s"} %s'
-                % (day, kind, esc(name), esc(proj), esc(prov), esc(model), esc(agent), v))
-
-        # Improvement series: tool errors, compactions, interruptions, agents by week, findings
-        out.extend(coach_metrics.lines())
-
-        # Weekly trend per project, last WEEKS weeks
-        add("# TYPE opencode_weekly_cost_usd gauge")
-        add("# TYPE opencode_weekly_tokens gauge")
-        since = int((time.time() - WEEKS * 7 * 86400) * 1000)
-        wk_cost, wk_tok = {}, {}
-        for week, wt, cst, total in c.execute(WEEKLY, (since,)):
-            key = (week, project_name(wt))
-            wk_cost[key] = wk_cost.get(key, 0) + cst
-            wk_tok[key] = wk_tok.get(key, 0) + total
-        for (week, proj), v in wk_cost.items():
-            add('opencode_weekly_cost_usd{week="%s",project="%s"} %s' % (week, esc(proj), v))
-            add('opencode_weekly_tokens{week="%s",project="%s"} %s' % (week, esc(proj), wk_tok[(week, proj)]))
-
         # Context window of the most recent sessions
         add("# TYPE opencode_context_tokens gauge")
         add("# TYPE opencode_context_limit_tokens gauge")
@@ -665,6 +496,18 @@ def collect():
     finally:
         c.close()
 
+    with _series_lock:
+        _series_cache.update(lines=out, at=time.time(), seconds=round(time.time() - started, 3))
+
+
+def collect():
+    """What a scrape publishes: the cached series, the coach's, and the quotas (small files). No database."""
+    started = time.time()
+    with _series_lock:
+        out = list(_series_cache["lines"])
+        read_at, read_seconds = _series_cache["at"], _series_cache["seconds"]
+    out.extend(coach_metrics.lines())
+    add = out.append
     # Quota per provider, from the opencode-quota plugin's cache
     quotas, qerrors = read_quotas()
     add("# TYPE opencode_quota_remaining_ratio gauge")
@@ -687,8 +530,10 @@ def collect():
 
     add("# TYPE opencode_exporter_scrape_seconds gauge")
     add("opencode_exporter_scrape_seconds %s" % round(time.time() - started, 3))
-    if not LEGACY_DAY_METRICS:  # ADR 0002: the dashboards read these from /data now
-        out = [line for line in out if not _LEGACY.match(line)]
+    add("# TYPE opencode_series_read_seconds gauge")
+    add("opencode_series_read_seconds %s" % read_seconds)
+    add("# TYPE opencode_series_updated_timestamp_seconds gauge")
+    add("opencode_series_updated_timestamp_seconds %d" % read_at)
     return "\n".join(out) + "\n"
 
 
@@ -929,6 +774,18 @@ class Handler(BaseHTTPRequestHandler):
             body = body.encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if parsed.path.rstrip("/") == "/health":  # healthcheck: the database must open
+            try:
+                connect().close()
+                body, status = b"ok\n", 200
+            except Exception as ex:
+                body, status = ("error: %s\n" % ex).encode(), 503
+            self.send_response(status)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)

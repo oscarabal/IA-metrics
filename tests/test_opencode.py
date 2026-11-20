@@ -17,6 +17,7 @@ os.environ.update(OPENCODE_DB=PATHS["db"], OPENCODE_MODELS=PATHS["models"], OPEN
                   OPENCODE_QUOTA_DIR=PATHS["quota"], TZ_NAME="Europe/Madrid")
 import exporter  # noqa: E402
 from coach import index as coach_index, metrics as coach_metrics  # noqa: E402
+import legacy_oracle  # noqa: E402
 
 
 def warm():
@@ -25,9 +26,10 @@ def warm():
     c = exporter.connect()
     try:
         coach_index.INDEX.refresh(c)
-        coach_metrics.refresh(c, exporter, exporter.WEEKS, force=True)
+        coach_metrics.refresh(c, exporter, force=True)
     finally:
         c.close()
+    exporter.refresh_series()
 
 
 class OpenCodeCollector(unittest.TestCase):
@@ -35,6 +37,7 @@ class OpenCodeCollector(unittest.TestCase):
     def setUpClass(cls):
         warm()
         cls.series = helpers.parse_metrics(exporter.collect())
+        cls.legacy = helpers.parse_metrics(legacy_oracle.opencode_series(exporter))  # see legacy_oracle
         cls.srv = helpers.Server(exporter.Handler)
         cls.exp = fixtures.oc_expected()
 
@@ -42,7 +45,7 @@ class OpenCodeCollector(unittest.TestCase):
     def tearDownClass(cls):
         cls.srv.close()
 
-    # -------------------------------------------------- Prometheus series (legacy, kept while migrating)
+    # -------------------------------------------------- Prometheus series and the legacy oracle
     def test_totals(self):
         s = self.series
         self.assertAlmostEqual(helpers.total(s, "opencode_cost_usd_total"), self.exp["cost"], places=6)
@@ -50,12 +53,12 @@ class OpenCodeCollector(unittest.TestCase):
         self.assertEqual(helpers.total(s, "opencode_tokens_total"), self.exp["tokens"])
 
     def test_day_series_match_totals(self):
-        s = self.series
+        s = self.legacy
         self.assertAlmostEqual(helpers.total(s, "opencode_day_cost_usd"), self.exp["cost"], places=6)
         self.assertEqual(helpers.total(s, "opencode_day_sessions"), self.exp["main_sessions"])
 
     def test_tools_skills_commands(self):
-        s = self.series
+        s = self.legacy
         self.assertEqual(helpers.total(s, "opencode_day_tool_calls"), 6)       # read, edit, skill, grep, bash, read
         self.assertEqual(helpers.total(s, "opencode_day_tool_errors"), 1)      # the edit
         self.assertEqual(helpers.total(s, "opencode_day_skill_activations", kind="skill", skill="pdf"), 1)
@@ -82,7 +85,7 @@ class OpenCodeCollector(unittest.TestCase):
         """Sum of a legacy series by `labels` == the API grouped by `group` (UTC days), key by key."""
         os.environ["TZ"] = "UTC"
         want = {}
-        for n, lab, v in self.series:
+        for n, lab, v in self.legacy:
             if n == legacy and all(lab.get(k) == w for k, w in (legacy_filter or {}).items()):
                 key = tuple(lab[l] for l in labels)
                 want[key] = want.get(key, 0) + v
@@ -214,6 +217,7 @@ class OpenCodeCollector(unittest.TestCase):
             db.execute("insert into message values(?,?,?,?,?)", (mid, "ses_aaa001", fixtures.T0, fixtures.T0, json.dumps(d)))
         db.commit()
         try:
+            exporter.refresh_series()   # what the background thread does every SERIES_EVERY seconds
             found = [(lab, v) for n, lab, v in helpers.parse_metrics(exporter.collect()) if n == "opencode_model_without_price_messages"]
             self.assertEqual(len(found), 1)
             self.assertIn("miprov/mi-modelo", str(found))
@@ -255,15 +259,29 @@ class OpenCodeCollector(unittest.TestCase):
         if rows is not None:
             self.assertEqual({r["cost_source"] for r in rows}, {"tool"})   # every fixture message has its cost
 
-    def test_legacy_switch(self):
-        exporter.LEGACY_DAY_METRICS = False
+    def test_health(self):
+        status, body = self.srv.get("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(body.startswith("ok"), body)
+        self.assertEqual(self.srv.get("/health", host="evil.example.com")[0], 421)
+        self.assertEqual(self.srv.get("/health", host="127.0.0.1:9100")[0], 200)   # what the healthcheck sends
+
+    def test_no_legacy_series(self):
+        """The per-day and per-week series are gone from the scrape (ADR 0002): only /data has them."""
+        names = {n for n, _l, _v in self.series}
+        self.assertFalse([n for n in names if n.startswith(("opencode_day_", "opencode_weekly_", "opencode_skill_scan"))])
+        self.assertIn("opencode_cost_usd_total", names)
+        self.assertIn("opencode_context_tokens", names)
+
+    def test_scrape_reads_no_database(self):
+        """A scrape serves what the background thread computed: it must not open opencode.db."""
+        real = exporter.connect
+        exporter.connect = lambda: (_ for _ in ()).throw(AssertionError("scrape opened the database"))
         try:
             names = {n for n, _l, _v in helpers.parse_metrics(exporter.collect())}
         finally:
-            exporter.LEGACY_DAY_METRICS = True
-        self.assertFalse([n for n in names if n.startswith(("opencode_day_", "opencode_weekly_"))])
+            exporter.connect = real
         self.assertIn("opencode_cost_usd_total", names)
-        self.assertIn("opencode_context_tokens", names)
 
     def test_report_json_contract(self):
         r = self.srv.json("/report.json")

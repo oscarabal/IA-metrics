@@ -4,7 +4,6 @@ Publishes which project each session belongs to (what the dashboards filter by),
 recent sessions with the time of their last activity (the dashboard keeps those inside its time range), the skills and commands used, and serves the list and the detail of the sessions.
 It reads the conversation files read-only, in the background, and keeps only metadata (see index.py).
 """
-import calendar
 import json
 import os
 import re
@@ -12,7 +11,7 @@ import threading
 import time
 import urllib.parse
 from collections import Counter
-from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import index
 import pricing
@@ -28,9 +27,6 @@ DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "http://localhost:3000/d/claude-
 CONTEXT_SESSIONS = int(os.environ.get("CONTEXT_SESSIONS", "30"))
 CONTEXT_LIMIT_DEFAULT = int(os.environ.get("CONTEXT_LIMIT_DEFAULT", "200000"))
 CONTEXT_LIMITS = os.environ.get("CONTEXT_LIMITS", "")  # "model=tokens,..."
-# ADR 0002: per-day and per-week series, kept during the move to /data. 0 stops publishing them.
-LEGACY_DAY_METRICS = os.environ.get("LEGACY_DAY_METRICS", "1") != "0"
-_LEGACY = re.compile(r"^(# TYPE )?claude_(day|coach_day|coach_week)_")
 _NO_MODEL = (None, "", "<synthetic>", "unknown")
 _warned_models = set()
 
@@ -168,55 +164,6 @@ def collect():
             add("claude_context_limit_tokens{%s} %s" % (lab, limit))
             add('claude_session_updated_seconds{session="%s"} %d' % (esc(s["id"]), s["updated"] // 1000))
 
-        uses, costs, created, days = {}, {}, {}, set()
-        for s in sessions:
-            if s["created"] and any(m[2] + m[3] + m[4] + m[5] > 0 for m in s["msgs"].values()):  # empty sessions are not counted, as in the list
-                key = (day_of(s["created"]), s["project"])
-                created[key] = created.get(key, 0) + 1
-                days.add(key[0])
-            for ts, name in s["commands"]:
-                k = (day_of(ts), name, s["project"], "command")
-                uses[k] = uses.get(k, 0) + 1
-                days.add(k[0])
-            for ts, name in s["skills"]:
-                k = (day_of(ts), name, s["project"], "skill")
-                uses[k] = uses.get(k, 0) + 1
-                days.add(k[0])
-            for m in s["msgs"].values():
-                cost = ix.cost_of(m)
-                if m[8] and cost is not None:
-                    k = (day_of(m[0]), m[8], s["project"])
-                    costs[k] = costs.get(k, 0) + cost
-                    days.add(k[0])
-        # cost of the turns each command launched (they share its prompt id), split by model and by origin: main thread, subagents, background calls
-        launched = {}
-        for s in sessions:
-            for pid, (ts, name) in s["command_prompts"].items():
-                launched[pid] = (day_of(ts), name, s["project"])
-        by_command = {}
-        for pid, model, origin, cost in list(ix.requests.values()):
-            hit = launched.get(pid)
-            if hit:
-                k = hit + (model, origin)
-                by_command[k] = by_command.get(k, 0) + cost
-                days.add(hit[0])
-        add("# TYPE claude_day_sessions gauge")
-        for (day, proj), n in created.items():
-            add('claude_day_sessions{day="%s",project="%s"} %s' % (day, esc(proj), n))
-        add("# TYPE claude_day_skill_uses gauge")
-        for (day, name, proj, kind), n in uses.items():
-            add('claude_day_skill_uses{day="%s",skill="%s",project="%s",kind="%s"} %s' % (day, esc(name), esc(proj), kind, n))
-        add("# TYPE claude_day_skill_cost_usd gauge")
-        for (day, name, proj), v in costs.items():
-            add('claude_day_skill_cost_usd{day="%s",skill="%s",project="%s"} %s' % (day, esc(name), esc(proj), v))
-        add("# TYPE claude_day_command_cost_usd gauge")
-        for (day, name, proj, model, origin), v in by_command.items():
-            add('claude_day_command_cost_usd{day="%s",command="%s",project="%s",model="%s",origin="%s"} %s' % (day, esc(name), esc(proj), esc(model), esc(origin), v))
-        days |= coach_metrics.days()  # days of the improvement series, so the dashboard's day filter finds them
-        add("# TYPE claude_day_start_seconds gauge")
-        for day in sorted(days):
-            y, mo, d = (int(x) for x in day.split("-"))
-            add('claude_day_start_seconds{day="%s"} %s' % (day, calendar.timegm((y, mo, d, 0, 0, 0))))
     add("# TYPE claude_index_scan_complete gauge")
     add("claude_index_scan_complete %s" % (1 if ix.done else 0))
     add("# TYPE claude_index_cost_requests gauge")
@@ -225,8 +172,6 @@ def collect():
     for model, n in sorted(models_without_price().items()):
         add('claude_model_without_price_messages{model="%s"} %s' % (esc(model), n))
     out.extend(coach_metrics.lines())  # cached by the coach's background thread; nothing is computed here
-    if not LEGACY_DAY_METRICS:  # ADR 0002: the dashboards read these from /data now
-        out = [line for line in out if not _LEGACY.match(line)]
     return "\n".join(out) + "\n"
 
 
@@ -421,6 +366,10 @@ class Handler(BaseHTTPRequestHandler):
                 if rows is None:
                     return self._send(404, "[]", "application/json")
                 return self._send(200, json.dumps(rows, ensure_ascii=False), "application/json; charset=utf-8")
+            if parsed.path.rstrip("/") == "/health":
+                ix = index.INDEX
+                status = "ok" if ix.done else "ok: leyendo las conversaciones (%d de %d ficheros)" % ix.progress
+                return self._send(200, status + "\n", "text/plain; charset=utf-8")
             if parsed.path.rstrip("/") == "/prices":
                 return self._send(200, prices_page(), "text/html; charset=utf-8")
             if parsed.path.rstrip("/") == "/prices/missing":

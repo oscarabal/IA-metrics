@@ -20,8 +20,8 @@ os.environ.update(PROJECTS_DIR=PATHS["projects"], CLAUDE_COMMANDS_DIR=PATHS["com
 import index  # noqa: E402
 import map as collector  # noqa: E402
 import pricing  # noqa: E402
-import ledger_source  # noqa: E402
-from coach import metrics as coach_metrics  # noqa: E402
+from coach import metrics as coach_metrics, report as coach_report  # noqa: E402
+import legacy_oracle  # noqa: E402
 
 
 def warm():
@@ -37,6 +37,7 @@ class ClaudeCollector(unittest.TestCase):
     def setUpClass(cls):
         warm()
         cls.series = helpers.parse_metrics(collector.collect())
+        cls.legacy = helpers.parse_metrics(legacy_oracle.claude_series(index, coach_report))  # see legacy_oracle
         cls.srv = helpers.Server(collector.Handler)
 
     @classmethod
@@ -52,8 +53,8 @@ class ClaudeCollector(unittest.TestCase):
         ix = index.INDEX
         self.assertEqual(ix.costs, fixtures.CC_TELEMETRY_COST)
 
-    def test_coach_series(self):
-        s = self.series
+    def test_legacy_oracle(self):
+        s = self.legacy
         self.assertEqual(helpers.total(s, "claude_coach_day_tool_errors"), 1)
         self.assertEqual(helpers.total(s, "claude_coach_day_compactions"), 1)
         self.assertGreaterEqual(helpers.total(s, "claude_day_skill_uses"), 1)
@@ -74,7 +75,7 @@ class ClaudeCollector(unittest.TestCase):
     def assertSame(self, legacy, labels, dataset, group, measure, legacy_filter=None, api_filter=None):
         os.environ["TZ"] = "UTC"
         want = {}
-        for n, lab, v in self.series:
+        for n, lab, v in self.legacy:
             if n == legacy and all(lab.get(k) == w for k, w in (legacy_filter or {}).items()):
                 key = tuple(lab[l] for l in labels)
                 want[key] = want.get(key, 0) + v
@@ -124,7 +125,7 @@ class ClaudeCollector(unittest.TestCase):
         """Where the telemetry knows the cost, the command cost is the same as the legacy series."""
         self.assertSame("claude_day_command_cost_usd", ("day", "command", "project", "model", "origin"), "commands",
                         ("day", "command", "project", "model", "origin"), "cost", api_filter={"cost_source": "telemetry"})
-        self.assertTrue(any(lab.get("command") == "revisa" for n, lab, _v in self.series if n == "claude_day_command_cost_usd"))
+        self.assertTrue(any(lab.get("command") == "revisa" for n, lab, _v in self.legacy if n == "claude_day_command_cost_usd"))
 
     def test_api_weekly_equivalent(self):
         self.assertSame("claude_coach_week_cost_usd", ("week", "model", "project"), "usage", ("week", "model", "project"), "cost")
@@ -154,6 +155,33 @@ class ClaudeCollector(unittest.TestCase):
         for title, local, used in queries:
             missing = used - by_panel[title]
             self.assertFalse(missing, "%s: la API no devuelve %s" % (title, sorted(missing)))
+
+    def test_store_retention(self):
+        """coach.db keeps everything by default; with a retention it drops what is older and compacts the file."""
+        from coach import store as coach_store
+        db = os.path.join(helpers.tmpdir(), "retention.db")
+        st = coach_store.Store(db)
+        now = 2_000_000_000
+        old, recent = (now - 400 * 86400) * 1000, (now - 10 * 86400) * 1000
+        with st.lock:
+            st.conn.executemany("insert into request_cost (request_id, ts) values (?, ?)", [("old", old), ("recent", recent)])
+            st.conn.executemany("insert into session_archive values (?, ?, '{}')", [("s_old", old), ("s_recent", recent)])
+            st.conn.commit()
+        self.assertIsNone(st.maintain(now=st.maintained_at + 10))           # not due right after starting
+        saved = coach_store.RETENTION_DAYS
+        try:
+            coach_store.RETENTION_DAYS = 0
+            self.assertEqual(st.maintain(now=now), 0)                         # keeps everything
+            st.maintained_at = 0
+            coach_store.RETENTION_DAYS = 365
+            self.assertEqual(st.maintain(now=now), 2)                         # the old request and the old session
+        finally:
+            coach_store.RETENTION_DAYS = saved
+        with st.lock:
+            left = {r[0] for r in st.conn.execute("select request_id from request_cost")}
+            tables = {r[0] for r in st.conn.execute("select name from sqlite_master where type = 'table'")}
+        self.assertEqual(left, {"recent"})
+        self.assertNotIn("daily", tables)                                     # dropped with the legacy series
 
     def test_usage_survives_deleted_conversations(self):
         """Claude Code deletes old conversation files (cleanupPeriodDays): their usage must stay (ADR 0002)."""
@@ -321,12 +349,16 @@ class ClaudeCollector(unittest.TestCase):
         self.assertNotIn("modelos sin precio</b>", self.srv.get("/prices")[1])
         self.assertEqual(collector.prices_status(), "OK\n")
 
-    def test_legacy_switch(self):
-        collector.LEGACY_DAY_METRICS = False
-        try:
-            names = {n for n, _l, _v in helpers.parse_metrics(collector.collect())}
-        finally:
-            collector.LEGACY_DAY_METRICS = True
+    def test_health(self):
+        status, body = self.srv.get("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(body.startswith("ok"), body)
+        self.assertEqual(self.srv.get("/health", host="evil.example.com")[0], 421)
+        self.assertEqual(self.srv.get("/health", host="127.0.0.1:9100")[0], 200)   # what the healthcheck sends
+
+    def test_no_legacy_series(self):
+        """The per-day and per-week series are gone from the scrape (ADR 0002): only /data has them."""
+        names = {n for n, _l, _v in self.series}
         self.assertFalse([n for n in names if n.startswith(("claude_day_", "claude_coach_day_", "claude_coach_week_"))])
         self.assertIn("claude_session_project", names)
         self.assertIn("claude_context_tokens", names)
