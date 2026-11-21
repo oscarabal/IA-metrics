@@ -60,7 +60,8 @@ contrato de datos ([ADR 0001](../adr/0001-pila-unica-docker-compose-con-perfiles
 
 - **`/data/<conjunto>`** (ambos colectores): filas por petición con las mismas columnas en las dos
   herramientas, agrupables, filtrables y con zona horaria local. Conjuntos: `usage`, `sessions`, `tools`,
-  `prompts`, `compactions`, `skills`, y en Claude Code además `interrupts` y `commands`. Motor en
+  `prompts`, `compactions`, `skills`, y en Claude Code además `interrupts`, `commands` y `background` (coste
+  de las llamadas que no se escriben en la conversación: solo telemetría). Motor en
   `collectors/common/ledger.py`; contrato en el docstring de cada `ledger_source.py`.
 - **`/metrics`**: texto Prometheus con lo que es estado actual; nunca series por día.
 - **`/coach/*`, `/report`, `/report.md`, `/report.json`**: informe de mejoras (reglas D1–D10 comunes, C1–C6
