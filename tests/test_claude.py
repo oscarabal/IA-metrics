@@ -51,7 +51,8 @@ class ClaudeCollector(unittest.TestCase):
 
     def test_costs_from_telemetry(self):
         ix = index.INDEX
-        self.assertEqual(ix.costs, fixtures.CC_TELEMETRY_COST)
+        expected = dict(fixtures.CC_TELEMETRY_COST, **{r[2]: r[5] for r in fixtures.CC_BACKGROUND})  # + llamadas de fondo
+        self.assertEqual(ix.costs, expected)
 
     def test_models_dev_fallback(self):
         """A model missing from prices.json is priced with models.dev, downloaded and then applied to old messages."""
@@ -324,7 +325,7 @@ class ClaudeCollector(unittest.TestCase):
         _sessions, _costs, tel = coach_report.snapshot(index.INDEX)
         efforts = {(m, e) for _ts, _sid, m, e, _src, _c, _o in tel["requests"]}
         self.assertIn(("claude-haiku-4-5", "medium"), efforts)                    # only in the conversation
-        self.assertEqual(len(tel["requests"]), len(fixtures.CC_ASSISTANT))          # 3 from telemetry + 1, no duplicates
+        self.assertEqual(len(tel["requests"]), len(fixtures.CC_ASSISTANT) + len(fixtures.CC_BACKGROUND))  # con mensaje + de fondo, sin duplicados
         decisions = [t for t in tel["tools"] if t[0] == "decision"]
         self.assertEqual([(t[3], t[5], t[6]) for t in decisions], [("Edit", "accept", "user_temporary")])
         results = {t[3]: t[4] for t in tel["tools"] if t[0] == "result"}
@@ -395,14 +396,27 @@ class ClaudeCollector(unittest.TestCase):
         self.assertEqual(self.srv.get("/health", host="evil.example.com")[0], 421)
         self.assertEqual(self.srv.get("/health", host="127.0.0.1:9100")[0], 200)   # what the healthcheck sends
 
+    def test_background_calls(self):
+        """Las llamadas que Claude Code no escribe en la conversación (solo telemetría) salen en /data/background
+        y no en /data/usage; su coste es el de los eventos sin mensaje."""
+        total = sum(c for *_x, c in fixtures.CC_BACKGROUND)
+        (row,) = self.api("background", measures="cost,calls")
+        self.assertAlmostEqual(row["cost"], total, places=6)
+        self.assertEqual(row["calls"], len(fixtures.CC_BACKGROUND))
+        by_origin = {r["origin"]: r["cost"] for r in self.api("background", group="origin", measures="cost")}
+        self.assertEqual(set(by_origin), {"title", "compact"})
+        # las peticiones normales (con mensaje) no se cuentan como de fondo
+        usage_cost = self.api("usage", measures="cost")[0]["cost"]
+        self.assertNotAlmostEqual(usage_cost, 0, places=6)
+        self.assertLess(total, usage_cost)
+
     def test_source_freshness(self):
         """«Estado de las fuentes»: newest answer in the conversations and in the telemetry, and when each was last read."""
         s = self.series
         newest = max(ts for _s, ts, _r, _m, tok, _side in fixtures.CC_ASSISTANT if sum(tok))
         self.assertEqual(helpers.total(s, "claude_index_last_message_timestamp_seconds"), newest // 1000)
-        by_req = {r[2]: r[1] for r in fixtures.CC_ASSISTANT}
-        self.assertEqual(helpers.total(s, "claude_telemetry_last_event_timestamp_seconds"),
-                         max(by_req[r] for r in fixtures.CC_TELEMETRY_COST) // 1000)
+        tel_ts = [r[1] for r in fixtures.CC_ASSISTANT if r[2] in fixtures.CC_TELEMETRY_COST] + [b[1] for b in fixtures.CC_BACKGROUND]
+        self.assertEqual(helpers.total(s, "claude_telemetry_last_event_timestamp_seconds"), max(tel_ts) // 1000)
         for name in ("claude_index_last_scan_timestamp_seconds", "claude_telemetry_last_check_timestamp_seconds"):
             self.assertGreater(helpers.total(s, name), fixtures.T0 / 1000, name)   # read in this run
 

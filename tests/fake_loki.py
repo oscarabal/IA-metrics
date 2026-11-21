@@ -16,6 +16,11 @@ def _api_request_streams():
                                    "model": model, "session_id": sid, "prompt_id": "p%d" % n, "query_source": "main",
                                    "effort": "high", "output_tokens": str(o)},
                         "values": [[str(ts * 1_000_000), "{}"]]})
+    for sid, ts, req, model, source, cost in getattr(fixtures, "CC_BACKGROUND", []):
+        streams.append({"stream": {"event_name": "api_request", "request_id": req, "cost_usd": str(cost),
+                                   "model": model, "session_id": sid, "prompt_id": "", "query_source": source,
+                                   "effort": "", "output_tokens": "0"},
+                        "values": [[str(ts * 1_000_000), "{}"]]})
     return streams
 
 

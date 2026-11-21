@@ -88,7 +88,7 @@ flowchart TD
     subgraph ahora["IA-metrics"]
         Y1["Pila parada"] --> Y2["Al volver, se leen las conversaciones:<br/>coste calculado, effort, herramientas,<br/>permisos, prompts"]
         Y3["Claude Code borra conversaciones"] --> Y4["Siguen contando: cada sesión<br/>está archivada en coach.db"]
-        Y5["Solo se pierde: llamadas que Claude Code<br/>no escribe en la conversación"]
+        Y5["Con la pila parada solo se pierden las llamadas<br/>que Claude Code no escribe en la conversación;<br/>con telemetría se miden (fila «Llamadas de fondo»)"]
     end
 ```
 
@@ -102,6 +102,7 @@ flowchart TD
 | Saber si los datos están al día | — | Fila «Estado de las fuentes» del Resumen IA |
 | Decisiones de permisos del informe | Loki | Telemetría o conversación (mismos valores) |
 | Sesiones con conversación borrada | Pierden su proyecto | Archivadas (solo metadatos) |
+| Llamadas de fondo (títulos, compactación) | No se medían por separado | Fila «Llamadas de fondo» (`/data/background`, solo con telemetría) |
 
 ## Rendimiento y almacenamiento (OpenCode, datos reales)
 
@@ -159,8 +160,7 @@ flowchart TD
 - Alertas (presupuesto, sin datos nuevos, modelos sin precio).
 - Fiabilidad de la API: errores 429/529 y latencia por modelo (leyendo `api_error` y la duración de cada petición).
 - Decidir sobre los contadores OTel de productividad (líneas, commits, PR, tiempo activo): usarlos o dejar de recogerlos.
-- Medir cuánto suponen las llamadas que Claude Code no escribe en la conversación (lo único que aún se pierde
-  con la pila parada).
 
 Ya resuelto desde la versión anterior de este documento: instalador multiplataforma (ADR 0008), gráficos que se
-adaptan al periodo (`group=auto`) y la fila «Estado de las fuentes» del Resumen IA.
+adaptan al periodo (`group=auto`), la fila «Estado de las fuentes» del Resumen IA y la medición de las llamadas
+de fondo (fila «Llamadas de fondo»; antes era lo único que no se cuantificaba).

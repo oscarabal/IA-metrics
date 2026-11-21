@@ -74,6 +74,7 @@ por defecto).
 | Coste estimado · Tokens · USD por millón de tokens · Acierto de caché | Totales del periodo. El acierto de caché es la parte del input leída de caché. |
 | Modelos sin precio | Modelos de tus conversaciones que no están en `prices.json` (en rojo si hay alguno): su coste sin telemetría queda como `missing`. Al pulsarlo, o con el enlace «Precios de los modelos», se abre `http://localhost:9100/prices` con tus modelos (precio, uso, coste estimado) y la tabla de precios completa. |
 | Sesiones con actividad | Sesiones distintas con alguna respuesta en el periodo; enlace a la lista de sesiones. |
+| Llamadas de fondo | Coste de las llamadas que Claude Code hace a la API pero no escribe en la conversación (títulos, resúmenes al compactar, clasificaciones). **No está incluido en «Coste estimado»**, que se calcula desde las conversaciones. Solo con telemetría; el detalle por origen, en la fila plegable del mismo nombre. |
 | Evolución | Coste y tokens a lo largo del periodo; el tamaño de cada barra se adapta al rango (1 minuto con «últimos 15 minutos», días con un mes). |
 | Coste por effort · Coste por proyecto | Reparto del coste. El effort sale de la telemetría o de la conversación; «desconocido» si ninguna lo tiene. |
 
@@ -114,6 +115,22 @@ nunca devuelve un punto anterior al inicio del rango, así que un periodo corto 
 
 ¿Dashboard vacío con un periodo corto? Mira «Estado de las fuentes» en el Resumen IA: dice cuándo fue la última
 respuesta que se ha leído y si los colectores están leyendo.
+
+### Llamadas de fondo (solo telemetría)
+
+Las llamadas que Claude Code hace a la API pero **no escribe en la conversación**: generar el título de una
+sesión, el resumen al compactar, clasificaciones de tema o cuota. Como el coste del dashboard se calcula desde
+las conversaciones, estas **no se suman en «Coste estimado»**; por eso tienen su propia cifra.
+
+- **Coste de llamadas de fondo** (cifra en la fila «Resumen», junto a «Coste estimado»): el total del periodo.
+  Solo aparece con la telemetría activada (sin ella, estas llamadas no quedan registradas en ningún sitio): es
+  justo lo que se pierde con la pila parada. Para el gasto real: «Coste estimado» + «Llamadas de fondo».
+- **Detalle por origen** (fila plegable «Llamadas de fondo (detalle por origen)»): el mismo coste repartido por
+  `query_source` (title, compact, …) y modelo. Si «compact» pesa, es que compactas mucho; parte las tareas largas
+  en sesiones distintas.
+
+Salen de `/data/background`: las peticiones de la telemetría cuyo `request_id` no tiene mensaje en ninguna
+conversación (ni viva ni archivada).
 
 ## Páginas de sesión e informe de mejoras
 

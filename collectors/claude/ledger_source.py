@@ -24,6 +24,10 @@ skills       skill and command uses: ts, kind (skill | command), skill, project,
              as_command, as_skill
 commands     the cost of the turns each command launched, per message: ts (the command's), command,
              project, model, origin, cost, cost_source, messages
+background   telemetry requests with no message in any conversation (session titles, compaction summaries,
+             quota checks...): ts, session, project, model, origin (query_source), cost, cost_source
+             ("telemetry"), calls. Their cost is only in the telemetry, so it is not in `usage`; empty
+             without telemetry. See it in «Llamadas de fondo» (ADR 0002: what is still lost with the stack stopped).
 """
 import index
 from common import ledger
@@ -171,7 +175,31 @@ def commands():
     return rows
 
 
+def background():
+    """Telemetry requests with no conversation message: their cost is only in the telemetry (never in `usage`).
+
+    A background call is a `request_id` the telemetry reported for which no message in any session (live or
+    archived) carries that `requestId` (title generation, compaction summaries, topic/quota classification...).
+    Reads only what the index already has; empty when there is no telemetry."""
+    ix = index.INDEX
+    with ix.lock:
+        seen = {m[7] for s in ix.sessions.values() for m in s["msgs"].values() if len(m) > 7 and m[7]}
+        requests = dict(ix.requests)
+        ts = dict(ix.request_ts)
+        meta = dict(ix.request_meta)
+        project_of = {sid: s["project"] for sid, s in ix.sessions.items()}
+    rows = []
+    for rid, req in requests.items():
+        if rid in seen:
+            continue
+        sid = (meta.get(rid) or ("", "", 0))[0]
+        rows.append({"ts": ts.get(rid, 0), "session": sid, "project": project_of.get(sid, "desconocido"),
+                     "model": req[1] or "unknown", "origin": req[2] or "desconocido",
+                     "cost": req[3] or 0.0, "cost_source": "telemetry", "calls": 1})
+    return rows
+
+
 LEDGER = ledger.Ledger()
 for _name, _build in (("usage", usage), ("sessions", sessions), ("tools", tools), ("prompts", prompts), ("compactions", compactions),
-                      ("interrupts", interrupts), ("skills", skills), ("commands", commands)):
+                      ("interrupts", interrupts), ("skills", skills), ("commands", commands), ("background", background)):
     LEDGER.register(_name, _build)

@@ -191,6 +191,15 @@ range. With a day or a week it shows at what times you work and with what.
 **Coste por modelo y effort** (cost per model and effort). Cost by model and effort, with the same bars. Effort
 comes from the telemetry or the conversation; without either it shows as «desconocido» (unknown).
 
+### Llamadas de fondo (background calls, telemetry only)
+
+**Llamadas de fondo** (background calls; stat in the «Resumen» row). What the API calls Claude Code makes but does
+not write to the conversation cost (session titles, compaction summaries, classifications). They are **not added
+to «Coste estimado»** (computed from the conversations) and only appear with telemetry on. The real spend is
+«Coste estimado» + «Llamadas de fondo».
+
+**Detalle por origen** (by source, collapsed row). The same cost by `query_source` and model. If «compact» stands out, you compact often.
+
 ## OpenCode
 
 ### OpenCode summary
@@ -277,6 +286,7 @@ weeks. If they rise, sessions are running too long or answers are not going wher
 | Is it worth lowering the effort? | Claude Code → Coste por effort · Coste por mensaje de cada modelo, por semana |
 | Which request was the most expensive? | Prompts más caros |
 | Why does the context fill up? | Herramientas · Bytes devueltos al contexto · Contexto de las sesiones |
+| What do the calls I don't see cost (titles, compaction)? | Claude Code → Llamadas de fondo |
 | Am I going to run out of quota? | OpenCode → Cuota y uso por proveedor |
 | Did the rule I added work? | Errores evitables por herramienta, por semana |
 | Why is a cost 0 or missing? | Modelos sin precio → prices page |

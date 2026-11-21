@@ -128,6 +128,11 @@ CC_ASSISTANT = [
 CC_EFFORT = {"req_001": "high", "req_002": "high", "req_003": "high", "req_004": "medium"}
 # cost per request as Claude Code's telemetry reports it (req_004 has no event: telemetry was down)
 CC_TELEMETRY_COST = {"req_001": 0.021, "req_002": 0.012, "req_003": 0.25}
+# Telemetría sin mensaje en la conversación (título, resumen al compactar): sesión, ts, request id, modelo, query_source, coste
+CC_BACKGROUND = [
+    ("0f8fad5b-d9cb-469f-a165-70867728950e", T0 + 10 * H + 20000, "req_bg1", "claude-haiku-4-5", "title", 0.0003),
+    ("7c9e6679-7425-40de-944b-e07fc1f90ae7", T0 + 23 * H + 40 * 60000, "req_bg2", "claude-haiku-4-5", "compact", 0.004),
+]
 
 
 def _iso(ms):
