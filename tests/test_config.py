@@ -202,42 +202,47 @@ class Grafana(unittest.TestCase):
 
 
 class Installer(unittest.TestCase):
-    @unittest.skipIf(not shutil.which("pwsh"), "pwsh no instalado")
-    def test_ps1_parses(self):
-        script = ("$e=$null;[System.Management.Automation.Language.Parser]::ParseFile('%s',[ref]$null,[ref]$e)|Out-Null;"
-                  "if($e.Count){$e|%%{$_.Message};exit 1}" % os.path.join(R, "installer", "install.ps1"))
-        r = subprocess.run(["pwsh", "-NoProfile", "-Command", script], capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+    """El instalador es install.py (un solo fichero para Windows, macOS y Linux); los .bat y .sh lo llaman.
+    Sus funciones se prueban en tests/test_installer.py."""
 
-    @unittest.skipIf(not shutil.which("pwsh"), "pwsh no instalado")
-    def test_uninstall_removes_only_installer_settings(self):
-        r = subprocess.run(["pwsh", "-NoProfile", "-File", os.path.join(R, "tests", "installer_uninstall.ps1"),
-                            "-Installer", os.path.join(R, "installer", "install.ps1")], capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("ok", r.stdout)
+    def test_entry_points_call_install_py(self):
+        for name, flag in (("Instalar.bat", ""), ("Actualizar.bat", "--update"), ("Desinstalar.bat", "--uninstall")):
+            with open(os.path.join(R, name), encoding="ascii") as f:
+                bat = f.read()
+            self.assertIn("install.py", bat, name)
+            if flag:
+                self.assertIn(flag, bat, name)
+        for name, flag in (("instalar.sh", ""), ("actualizar.sh", "--update"),
+                           ("desinstalar.sh", "--uninstall"), ("iniciar-metricas.sh", "--start")):
+            with open(os.path.join(R, name), encoding="utf-8") as f:
+                sh = f.read()
+            self.assertIn("install.py", sh, name)
+            if flag:
+                self.assertIn(flag, sh, name)
 
-    def test_update_and_uninstall_entry_points(self):
-        with open(os.path.join(R, "installer", "install.ps1"), encoding="utf-8-sig") as f:
-            ps1 = f.read()
-        for flag in ("[switch]$Update", "[switch]$Uninstall", "[switch]$RemoveData", "[switch]$Force"):
-            self.assertIn(flag, ps1)
-        for bat, flag in (("Actualizar.bat", "-Update"), ("Desinstalar.bat", "-Uninstall")):
-            with open(os.path.join(R, bat), encoding="ascii") as f:
-                self.assertIn("install.ps1\" %s" % flag, f.read(), bat)
+    def test_install_py_has_modes(self):
+        with open(os.path.join(R, "installer", "install.py"), encoding="utf-8") as f:
+            src = f.read()
+        for flag in ("--tools", "--update", "--uninstall", "--remove-data", "--start", "--force", "--no-start"):
+            self.assertIn(flag, src, flag)
 
-    def test_no_list_assigned_from_if(self):
-        """`$x = if (...) { [List[string]](...) }` unrolls the list into a fixed-size array and a later
-        `$x.Add(...)` fails with «Collection was of a fixed size» (Set-EnvValue with a new key, 2026-11-21)."""
-        with open(os.path.join(R, "installer", "install.ps1"), encoding="utf-8-sig") as f:
-            ps1 = f.read()
-        self.assertNotRegex(ps1, r"=\s*if\s*\([^\n]*\{\s*\[(System\.)?Collections\.Generic\.List")
+    def test_no_powershell_installer(self):
+        """El instalador de PowerShell se retiró: nada debe seguir apuntando a install.ps1."""
+        self.assertFalse(os.path.exists(os.path.join(R, "installer", "install.ps1")))
+        for name in ("Instalar.bat", "Actualizar.bat", "Desinstalar.bat"):
+            with open(os.path.join(R, name), encoding="ascii") as f:
+                self.assertNotIn("install.ps1", f.read(), name)
 
     def test_line_endings(self):
-        for rel in ("Instalar.bat", "Iniciar-metricas.bat", "Actualizar.bat", "Desinstalar.bat", "installer/install.ps1"):
+        """Windows necesita CRLF en los .bat; los .sh de Unix van con LF."""
+        for rel in ("Instalar.bat", "Iniciar-metricas.bat", "Actualizar.bat", "Desinstalar.bat"):
             with open(os.path.join(R, rel), "rb") as f:
                 data = f.read()
             self.assertNotRegex(data, re.compile(rb"[^\r]\n"), rel)
-
+        for rel in ("instalar.sh", "actualizar.sh", "desinstalar.sh", "iniciar-metricas.sh"):
+            with open(os.path.join(R, rel), "rb") as f:
+                data = f.read()
+            self.assertNotIn(b"\r\n", data, rel)
 
 if __name__ == "__main__":
     unittest.main()

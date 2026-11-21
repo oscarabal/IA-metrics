@@ -14,7 +14,7 @@ jobs:
           python-version: "3.13"   # the collectors' image (python:3.13-alpine)
       - name: Dependencias de los tests
         run: pip install pyyaml
-      - name: Tests (colectores, contrato, configuración, sintaxis del instalador con pwsh)
+      - name: Tests (colectores, contrato, configuración, instalador)
         run: python tests/run.py
       - name: docker compose config con cada perfil
         env:
