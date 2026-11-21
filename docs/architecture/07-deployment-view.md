@@ -44,7 +44,7 @@ en `.env` decide cuáles arrancan.
 | `collectors/opencode/` | Contenedor `opencode-collector` | Docker local |
 | `grafana/dashboards/` | Montaje de solo lectura en Grafana (provisionado) | Docker local |
 | `coach.db` | Volumen `coach-data` | Docker local |
-| `installer/install.ps1` | PowerShell 5.1 en el equipo | Windows |
+| `installer/install.py` | Python 3 en el equipo | Windows, macOS, Linux |
 
 ## Infraestructura nivel 2
 

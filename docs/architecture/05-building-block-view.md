@@ -54,7 +54,7 @@ contrato de datos ([ADR 0001](../adr/0001-pila-unica-docker-compose-con-perfiles
 | Grafana | Dashboards Resumen IA, Claude Code y OpenCode | Datasources Prometheus, Loki, Infinity (`coach-claude`, `coach-opencode`) | `config/grafana/`, `grafana/dashboards/` |
 | claude-collector | Índice de conversaciones, coste híbrido, registro `/data`, páginas, informe | HTTP 9100 | `collectors/claude/` |
 | opencode-collector | Lectura de `opencode.db`, precio de API, registro `/data`, páginas, informe | HTTP 9101 | `collectors/opencode/` |
-| Instalador | Elegir perfiles, generar `.env`, configurar telemetría, migrar volúmenes, arrancar; actualizar (`-Update`) y desinstalar (`-Uninstall`) | `Instalar.bat`, `Iniciar-metricas.bat`, `Actualizar.bat`, `Desinstalar.bat` | `installer/install.ps1` |
+| Instalador | Elegir perfiles, generar `.env`, configurar telemetría, migrar volúmenes, arrancar; `--update` y `--uninstall` | `.bat` (Windows) y `.sh` (Unix) que lanzan el instalador | `installer/install.py` (multiplataforma, ADR 0008) |
 
 ### Interfaces importantes
 

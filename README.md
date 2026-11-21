@@ -15,15 +15,21 @@ Prometheus y un Grafana compartidos y un dashboard que suma el gasto de las dos 
 
 ## Instalación
 
-Requisitos: Windows con Docker Desktop (o Rancher Desktop / Podman con `docker compose`). El primer
-arranque necesita internet para descargar las imágenes y el plugin Infinity de Grafana.
+Requisitos: Docker (Docker Desktop, Rancher Desktop o Podman con `docker compose`) y **Python 3**. Funciona
+en Windows, macOS y Linux. El primer arranque necesita internet para descargar las imágenes y el plugin
+Infinity de Grafana.
 
-Ejecuta **`Instalar.bat`**. Para cambiar de herramientas más adelante, vuelve a ejecutarlo.
+Ejecuta el instalador; para cambiar de herramientas más adelante, vuelve a ejecutarlo:
+
+- **Windows:** doble clic en **`Instalar.bat`**.
+- **macOS / Linux:** `./instalar.sh` (o `python3 installer/install.py`).
+
+El instalador es un único `installer/install.py` para los tres sistemas; los `.bat` y los `.sh` solo lo lanzan.
 
 ```mermaid
 flowchart TD
-    A([Instalar.bat]) --> B{¿Docker en marcha?}
-    B -- no --> B1[Arranca Docker Desktop y espera] --> C
+    A([Instalar.bat / instalar.sh]) --> B{¿Docker en marcha?}
+    B -- no --> B1[Lo arranca si puede y espera] --> C
     B -- sí --> C[¿Qué medir? Claude Code, OpenCode o ambos<br/>detecta cuáles tienes instalados]
     C --> D[Genera .env: perfiles, contraseña de Grafana, zona horaria]
     D --> E{¿Claude Code?}
@@ -37,16 +43,19 @@ flowchart TD
     J --> K([docker compose up -d y abre Grafana])
 ```
 
-Sin preguntas: `powershell -File installer\install.ps1 -Tools claude,opencode`
-(otras opciones: `-NoStart`, `-SkipClaudeSettings`, `-SkipMigration`, `-NoShortcut`).
+Sin preguntas: `python3 installer/install.py --tools claude,opencode`
+(otras opciones: `--no-start`, `--skip-claude-settings`, `--skip-migration`, `--no-shortcut`).
 
-**Actualizar:** `Actualizar.bat` (o `install.ps1 -Update`) descarga el código nuevo con `git pull` si el
-repositorio no tiene cambios locales, descarga las imágenes y reinicia la pila; el historial se conserva.
+**Actualizar:** `Actualizar.bat` / `./actualizar.sh` (o `install.py --update`) descarga el código nuevo con
+`git pull` si el repositorio no tiene cambios locales, descarga las imágenes y reinicia la pila; el historial
+se conserva.
 
-**Desinstalar:** `Desinstalar.bat` (o `install.ps1 -Uninstall`) elimina los contenedores, quita de
-`settings.json` las variables de telemetría que puso el instalador (con copia previa) y el acceso directo, y
-pregunta si borrar también el historial (`-RemoveData` lo borra sin preguntar; `-Force` no pregunta nada). La
-carpeta del proyecto y `.env` se quedan.
+**Desinstalar:** `Desinstalar.bat` / `./desinstalar.sh` (o `install.py --uninstall`) elimina los contenedores,
+quita de `settings.json` las variables de telemetría que puso el instalador (con copia previa) y el acceso
+directo, y pregunta si borrar también el historial (`--remove-data` lo borra sin preguntar; `--force` no
+pregunta nada). La carpeta del proyecto y `.env` se quedan.
+
+**Arrancar más tarde:** `Iniciar-metricas.bat` / `./iniciar-metricas.sh` (o `install.py --start`).
 
 A mano: copia `.env.example` a `.env`, define `GRAFANA_ADMIN_PASSWORD` y `COMPOSE_PROFILES`
 (`claude`, `opencode` o `claude,opencode`) y ejecuta `docker compose up -d`.
@@ -210,10 +219,11 @@ Parámetros: `from`/`to` (ms), `project`, `group` (columnas y `hour`/`day`/`week
 ```
 docker-compose.yml          servicios y perfiles
 .env.example                variables (las escribe el instalador)
-Instalar.bat                instalador (installer/install.ps1)
-Actualizar.bat              actualiza código, imágenes y pila (install.ps1 -Update)
-Desinstalar.bat             desinstala (install.ps1 -Uninstall)
-Iniciar-metricas.bat        arranca la pila, abre Grafana y avisa si algún modelo no tiene precio
+installer/install.py        instalador multiplataforma (Windows, macOS, Linux)
+Instalar.bat / instalar.sh  lanzan install.py (instalar o reconfigurar)
+Actualizar.bat / .sh        actualizan (install.py --update)
+Desinstalar.bat / .sh       desinstalan (install.py --uninstall)
+Iniciar-metricas.bat / .sh  arrancan la pila, abren Grafana y avisan si algún modelo no tiene precio
 docker-compose.debug.yml    publica Prometheus, Loki y el collector en 127.0.0.1 mientras depuras
 collectors/common/          API de datos, cabecera Host y página del informe, compartidos
 collectors/claude/          colector de Claude Code: índice, registro, tabla de precios, informe

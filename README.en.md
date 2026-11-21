@@ -15,15 +15,21 @@ with a shared Prometheus and Grafana and a dashboard that adds up the spend of b
 
 ## Installation
 
-Requirements: Windows with Docker Desktop (or Rancher Desktop / Podman with `docker compose`). The first
-start needs internet access to download the images and Grafana's Infinity plugin.
+Requirements: Docker (Docker Desktop, Rancher Desktop or Podman with `docker compose`) and **Python 3**. It
+runs on Windows, macOS and Linux. The first start needs internet access to download the images and Grafana's
+Infinity plugin.
 
-Run **`Instalar.bat`**. To change the tools later, run it again.
+Run the installer; to change the tools later, run it again:
+
+- **Windows:** double-click **`Instalar.bat`**.
+- **macOS / Linux:** `./instalar.sh` (or `python3 installer/install.py`).
+
+The installer is a single `installer/install.py` for all three systems; the `.bat` and `.sh` files just launch it.
 
 ```mermaid
 flowchart TD
-    A([Instalar.bat]) --> B{Docker running?}
-    B -- no --> B1[Starts Docker Desktop and waits] --> C
+    A([Instalar.bat / instalar.sh]) --> B{Docker running?}
+    B -- no --> B1[Starts it if it can and waits] --> C
     B -- yes --> C[What to measure? Claude Code, OpenCode or both<br/>detects which ones are installed]
     C --> D[Writes .env: profiles, Grafana password, time zone]
     D --> E{Claude Code?}
@@ -37,16 +43,18 @@ flowchart TD
     J --> K([docker compose up -d and opens Grafana])
 ```
 
-Unattended: `powershell -File installer\install.ps1 -Tools claude,opencode`
-(other options: `-NoStart`, `-SkipClaudeSettings`, `-SkipMigration`, `-NoShortcut`).
+Unattended: `python3 installer/install.py --tools claude,opencode`
+(other options: `--no-start`, `--skip-claude-settings`, `--skip-migration`, `--no-shortcut`).
 
-**Update:** `Actualizar.bat` (or `install.ps1 -Update`) pulls the new code with `git pull` if the repository
-has no local changes, pulls the images and restarts the stack; history is kept.
+**Update:** `Actualizar.bat` / `./actualizar.sh` (or `install.py --update`) pulls the new code with `git pull`
+if the repository has no local changes, pulls the images and restarts the stack; history is kept.
 
-**Uninstall:** `Desinstalar.bat` (or `install.ps1 -Uninstall`) removes the containers, removes from
-`settings.json` the telemetry variables the installer added (after a backup) and the shortcut, and asks
-whether to delete the history too (`-RemoveData` deletes it without asking; `-Force` asks nothing). The
-project folder and `.env` stay.
+**Uninstall:** `Desinstalar.bat` / `./desinstalar.sh` (or `install.py --uninstall`) removes the containers,
+removes from `settings.json` the telemetry variables the installer added (after a backup) and the shortcut,
+and asks whether to delete the history too (`--remove-data` deletes it without asking; `--force` asks
+nothing). The project folder and `.env` stay.
+
+**Start later:** `Iniciar-metricas.bat` / `./iniciar-metricas.sh` (or `install.py --start`).
 
 By hand: copy `.env.example` to `.env`, set `GRAFANA_ADMIN_PASSWORD` and `COMPOSE_PROFILES`
 (`claude`, `opencode` or `claude,opencode`) and run `docker compose up -d`.
@@ -213,9 +221,10 @@ Parameters: `from`/`to` (ms), `project`, `group` (columns and `hour`/`day`/`week
 ```
 docker-compose.yml          services and profiles
 .env.example                variables (written by the installer)
-Instalar.bat                installer (installer/install.ps1)
-Actualizar.bat              updates code, images and stack (install.ps1 -Update)
-Desinstalar.bat             uninstalls (install.ps1 -Uninstall)
+installer/install.py        cross-platform installer (Windows, macOS, Linux)
+Instalar.bat / instalar.sh  launch install.py (install or reconfigure)
+Actualizar.bat / .sh        update (install.py --update)
+Desinstalar.bat / .sh       uninstall (install.py --uninstall)
 Iniciar-metricas.bat        starts the stack, opens Grafana and warns if a model has no price
 docker-compose.debug.yml    publishes Prometheus, Loki and the collector on 127.0.0.1 while debugging
 collectors/common/          data API, Host header check and report page, shared

@@ -44,9 +44,10 @@ docker compose up -d --force-recreate otel-collector    # aplicar cambios en con
   `docs/opencode.md` (cada panel y de dónde sale). Si cambias un panel, actualiza su guía.
 - `config/` — OTel Collector, Loki, Prometheus y provisioning de Grafana.
 - `grafana/dashboards/{global,claude,opencode}` — una carpeta de Grafana por subcarpeta.
-- `installer/install.ps1` — instalador (Windows PowerShell 5.1 compatible; ficheros con CRLF y BOM), también
-  `-Update` y `-Uninstall` (`Actualizar.bat`, `Desinstalar.bat`). Desinstalar solo quita de `settings.json` las
-  variables que el instalador puso y con su valor (`tests/installer_uninstall.ps1`).
+- `installer/install.py` — instalador multiplataforma (Windows, macOS, Linux; solo Python 3 de la librería
+  estándar). Modos `--update` y `--uninstall`; los lanzadores `.bat` (Windows, CRLF) y `.sh` (Unix, LF) solo lo
+  llaman. Desinstalar solo quita de `settings.json` las variables que el instalador puso y con su valor. Las
+  funciones puras (env, settings.json, selección, zona horaria) se prueban en `tests/test_installer.py` sin Docker.
 
 ## Convenciones que hay que respetar
 

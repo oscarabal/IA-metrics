@@ -56,7 +56,7 @@ series de `/metrics`. Las peticiones HTTP solo copian lo calculado; `/data` apli
 
 ## Arranque
 
-1. `Iniciar-metricas.bat` arranca Docker Desktop si hace falta y ejecuta `docker compose up -d`.
+1. El lanzador (`Iniciar-metricas.bat` en Windows, `iniciar-metricas.sh` en Unix, o `install.py --start`) arranca Docker si hace falta y ejecuta `docker compose up -d`.
 2. Grafana espera a que Prometheus esté sano; `up -d --wait` espera a que todo lo esté (hasta 3 min).
 3. `claude-collector` restaura costes y sesiones archivadas de `coach.db` y relee todas las conversaciones;
    mientras tanto `/health` y `/prices/missing` informan del progreso.

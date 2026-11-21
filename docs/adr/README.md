@@ -8,5 +8,6 @@
 | [0005](0005-coste-de-opencode-a-precio-de-api.md) | Coste de OpenCode a precio de API cuando OpenCode guarda 0 | aceptada |
 | [0006](0006-precios-de-claude-code-desde-models-dev.md) | models.dev como respaldo de los precios de Claude Code | aceptada |
 | [0007](0007-telemetria-de-la-app-de-claude.md) | Tareas de la app de Claude con un colector propio que recibe su telemetría | retirada |
+| [0008](0008-instalador-unico-en-python-multiplataforma.md) | Instalador único en Python, multiplataforma | aceptada |
 
 El número 0003 no se usa: su propuesta se fusionó en la 0002.
