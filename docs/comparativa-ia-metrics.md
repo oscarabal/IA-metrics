@@ -33,7 +33,7 @@ flowchart LR
     end
     subgraph despues["Ahora: IA-metrics"]
         direction TB
-        I0(["Instalar.bat<br/>elige Claude Code, OpenCode o ambos"])
+        I0(["Instalar.bat / instalar.sh<br/>elige Claude Code, OpenCode o ambos"])
         C1["claude-collector<br/>registro + /data"]
         C2["opencode-collector<br/>registro + /data"]
         P[("Prometheus<br/>compartido")]
@@ -51,29 +51,31 @@ flowchart LR
 
 | Área | claude-metrics | opencode-metrics | IA-metrics |
 | --- | --- | --- | --- |
-| Instalación | Copiar `.env`, editar `settings.json` a mano, `.bat` de arranque | Copiar `.env`, `.bat` de arranque | `Instalar.bat`: elige herramientas, genera `.env` y contraseña, configura la telemetría con copia previa, detecta la zona horaria y migra las pilas antiguas |
+| Instalación | Copiar `.env`, editar `settings.json` a mano, `.bat` de arranque | Copiar `.env`, `.bat` de arranque | Instalador único `install.py` (Windows, macOS, Linux; solo Python 3): elige herramientas, genera `.env` y contraseña, configura la telemetría con copia previa, detecta la zona horaria y migra las pilas antiguas |
 | Herramientas | Solo Claude Code | Solo OpenCode | Una, otra o ambas (perfiles de Docker Compose) |
 | Gasto total en IA | No | No | Dashboard «Resumen IA» con las dos herramientas sumadas |
 | Grafana / Prometheus | Propios (:3000) | Propios (:3001) | Uno de cada, compartidos |
-| Origen del coste | Contadores OTel por sesión | Lo que guarda OpenCode | Registro por petición: telemetría si existe; si no, tabla de precios; OpenCode, su coste |
+| Origen del coste | Contadores OTel por sesión | Lo que guarda OpenCode | Registro por petición: telemetría si existe; si no, tabla de precios (o models.dev de respaldo); OpenCode, su coste |
 | Historial | Desde que se activó la telemetría, y con huecos cuando la pila estaba parada | Completo | Completo en ambas, también con la pila parada |
 | Selector de tiempo | El de Grafana | Propio (Periodo, Desde, Hasta) | El de Grafana en los tres dashboards |
 | Días | UTC | UTC | Hora local (`TZ`, por defecto Europe/Madrid) |
 | Datos por día | Series en Prometheus con el día como etiqueta | Igual | API JSON `/data` leída con Infinity |
-| Pruebas | Ninguna | Ninguna | 6 suites (96 pruebas) y GitHub Actions |
-| Código compartido | — | — | `collectors/common/`: API de datos, cabecera Host, página del informe |
+| Pruebas | Ninguna | Ninguna | 7 suites (137 pruebas) y GitHub Actions |
+| Código compartido | — | — | `collectors/common/`: API de datos, cabecera Host, página del informe y el catálogo de reglas del informe (umbrales D1–D10, severidad) |
 
 ## Exactitud del coste
 
 | | Antes | Ahora |
 | --- | --- | --- |
 | Claude Code, mismas peticiones | Contadores OTel: **98,54 $** | Registro: **115,90 $** (los contadores perdían un 15 %) |
-| Claude Code sin telemetría | Coste «—» | Tabla de precios con **0,0 %** de desviación frente a la telemetría en los cuatro modelos usados (~1.400 peticiones) |
+| Claude Code sin telemetría | Coste «—» | Tabla de precios con **0,0 %** de desviación frente a la telemetría en los cuatro modelos usados (~1.400 peticiones); models.dev como respaldo para los modelos que falten |
 | Fuentes de coste en Claude Code | Tres sin conciliar (OTel, Loki, conversaciones) | Una (`index.hybrid_cost`), usada por dashboards, páginas e informe |
 | OpenCode | El de OpenCode | El mismo, comprobado al céntimo: las 17 series antiguas coinciden con la API (188,19 $) |
 
 La tabla de precios (`collectors/claude/prices.json`) tiene fecha de inicio de cada precio, tramos por
 tamaño de prompt, escrituras de caché de 5 min y 1 h, modo rápido, inferencia en EE. UU. y búsquedas web.
+Para los modelos que falten, el colector usa una copia diaria de models.dev como respaldo (ADR 0006);
+`prices.json` sigue mandando.
 
 ## Historial y pila parada
 
@@ -114,7 +116,7 @@ flowchart TD
 
 | | Antes | Ahora |
 | --- | --- | --- |
-| Gasto conjunto | — | Coste total, por herramienta, diario, por proyecto y eficiencia comparada |
+| Gasto conjunto | — | Coste total, por herramienta, por proyecto, eficiencia comparada, coste en el tiempo (grupo adaptable al periodo) y estado de las fuentes |
 | Prompts más caros | Solo Claude Code, con texto solo si se enviaba a Loki | Ambas herramientas, con selector «Texto de los prompts» (oculto por defecto; oculto, el texto no sale del colector) |
 | Comandos | Comandos con el texto de su plantilla expandida | `/nombre` |
 | Consultas | PromQL de varias líneas con `*_day_start_seconds` (102 usos solo en OpenCode) | Una URL de la API por panel, con proporciones, «N mayores + otros» y valores distintos calculados en el colector |
@@ -135,11 +137,11 @@ flowchart TD
 
 | | Antes | Ahora |
 | --- | --- | --- |
-| Pruebas | Ninguna: un cambio de formato se veía mirando el dashboard | Datos de ejemplo de ambas herramientas, Loki falso, pruebas de equivalencia con las series antiguas, de cada URL de cada dashboard, de la tabla de precios, del contrato del informe y de la configuración |
+| Pruebas | Ninguna: un cambio de formato se veía mirando el dashboard | Datos de ejemplo de ambas herramientas, Loki falso, pruebas de equivalencia con las series antiguas, de cada URL de cada dashboard, de la tabla de precios, del contrato del informe, de la configuración y del instalador (`tests/test_installer.py`, sin PowerShell) |
 | Comprobadores | — | `check_claude_prices.py` (precios, campos y valores de tus conversaciones, sin contenido); la equivalencia con las series antiguas queda en los tests (`tests/legacy_oracle.py`) |
 | Dashboards | Editados a mano | JSON provisionado, comprobado por los tests; el Resumen IA se genera con un script |
-| Decisiones | Sin ADR | ADR 0001 (pila única), 0002 (registro por petición y API), 0004 (pruebas) |
-| Repositorio | Saltos de línea mezclados | `.gitattributes` (LF; CRLF en `.bat` y `.ps1`) |
+| Decisiones | Sin ADR | ADR 0001 (pila única), 0002 (registro y API), 0004 (pruebas), 0005 (coste de OpenCode), 0006 (models.dev), 0007 (telemetría de la app, retirada) y 0008 (instalador único multiplataforma) |
+| Repositorio | Saltos de línea mezclados | `.gitattributes` (LF; CRLF en los `.bat` de Windows) |
 | Documentación | Un README por proyecto | README en español e inglés con diagramas Mermaid, guía de cada dashboard |
 
 ## Lo que cuesta
@@ -150,10 +152,15 @@ flowchart TD
 - **Más dependencia del plugin Infinity**, que además necesita internet en el primer arranque.
 - **Con una sola herramienta instalada**, los paneles del Resumen IA muestran un aviso de conexión para la otra
   (antes salía 0).
-- **El instalador es solo para Windows**, aunque el compose también vale para macOS y Linux.
+- **El instalador añade Python 3 como requisito** (además de Docker): un solo `install.py` para Windows, macOS y Linux.
 
 ## Pendiente
 
+- Alertas (presupuesto, sin datos nuevos, modelos sin precio).
+- Fiabilidad de la API: errores 429/529 y latencia por modelo (leyendo `api_error` y la duración de cada petición).
+- Decidir sobre los contadores OTel de productividad (líneas, commits, PR, tiempo activo): usarlos o dejar de recogerlos.
 - Medir cuánto suponen las llamadas que Claude Code no escribe en la conversación (lo único que aún se pierde
   con la pila parada).
-- Alertas (presupuesto, contexto casi lleno).
+
+Ya resuelto desde la versión anterior de este documento: instalador multiplataforma (ADR 0008), gráficos que se
+adaptan al periodo (`group=auto`) y la fila «Estado de las fuentes» del Resumen IA.
