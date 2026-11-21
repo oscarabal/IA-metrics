@@ -15,8 +15,9 @@ from collections import Counter, defaultdict
 
 from .errors import ADVICE
 from .index import INDEX
+from common import coach_rules as R
+from common.coach_rules import FORMAT_VERSION, finding as _finding, pct as _pct, quantile as _quantile, severity  # noqa: F401
 
-FORMAT_VERSION = 1
 TOP = 10
 
 MESSAGES = """
@@ -43,11 +44,7 @@ from session s left join project p on p.id = s.project_id
 """
 
 # Short names of the rules, for the dashboard
-RULES = {
-    "D1": "Errores de herramienta", "D2": "Coste por agente", "D3": "Bucles y exploración", "D4": "Contexto",
-    "D5": "Permisos", "D6": "Caché", "D7": "Skills", "D8": "Modelo fijado en comandos", "D9": "Interrupciones",
-    "D10": "Comandos sin uso", "D11": "Variantes -fast",
-}
+RULES = R.rules("Coste por agente", D11="Variantes -fast")
 
 # Tools whose repetition with the same arguments is not a sign of a loop
 NOT_LOOPS = {"todowrite", "todoread", "question"}
@@ -64,17 +61,6 @@ class Msg:
     @property
     def tokens(self):
         return self.inp + self.out + self.reasoning + self.cache_read + self.cache_write
-
-
-def _pct(a, b):
-    return (a / b) if b else 0.0
-
-
-def _quantile(values, q):
-    if not values:
-        return 0
-    values = sorted(values)
-    return values[min(len(values) - 1, int(q * len(values)))]
 
 
 class Period:
@@ -424,7 +410,7 @@ def model_health(p):
         if m.error and m.error != "MessageAbortedError":
             merr[m.model][m.error] += 1
     out = {}
-    for model in set(msgs) | set(calls):
+    for model in sorted(set(msgs) | set(calls)):  # sorted: the same report on every run
         tools = []
         for tool, n in errs[model].most_common():
             tools.append({"tool": tool, "errors": n, "calls": calls[model][tool], "rate": round(_pct(n, calls[model][tool]), 4)})
@@ -442,7 +428,7 @@ def interaction_stats(p):
     quick = []
     for m in aborted:
         nxt = [t for t in user_by_session.get(m.session, []) if t > (m.done or m.time)]
-        if nxt and min(nxt) - (m.done or m.time) <= 120000:
+        if nxt and min(nxt) - (m.done or m.time) <= R.D9_QUICK_RETRY_MS:
             quick.append(m)
     per_session = [len(v) for s, v in user_by_session.items() if not p.sessions[s]["parent"]]
     sub_cost = sum(m.cost for m in p.assistant if p.sessions[m.session]["parent"])
@@ -489,24 +475,6 @@ def config_inventory(helpers, skills):
 
 # ----------------------------------------------------------------------------- detectors
 
-def severity(f, summary):
-    cost = summary["cost_usd"]
-    usd = f.get("impact_usd") or 0
-    if cost > 0 and usd:
-        share = usd / cost
-        return "alta" if share >= 0.10 else "media" if share >= 0.02 else "baja"
-    if f.get("impact_tokens"):
-        return "media" if f["impact_tokens"] >= 50_000_000 else "baja"
-    n = f.get("impact_count") or 0
-    return "alta" if n >= 100 else "media" if n >= 20 else "baja"
-
-
-def _finding(detector, title, evidence, recommendation, impact_usd=None, impact_count=None, impact_tokens=None,
-             sessions=(), subject=""):
-    return {"detector": detector, "subject": subject, "title": title, "evidence": evidence,
-            "recommendation": recommendation, "impact_usd": round(impact_usd, 4) if impact_usd is not None else None,
-            "impact_count": impact_count, "impact_tokens": impact_tokens, "sessions": list(sessions)[:5]}
-
 
 def d1_tool_errors(ctx):
     """Tool errors that the user can prevent, grouped by tool and class."""
@@ -523,12 +491,12 @@ def d1_tool_errors(ctx):
     out = []
     for (tool, cls), g in rows.items():
         rate = _pct(g["errors"], calls.get(tool, 0))
-        if g["errors"] < 10 and not (g["errors"] >= 5 and rate >= 0.05):
+        if g["errors"] < R.D1_MIN_ERRORS and not (g["errors"] >= R.D1_MIN_ERRORS_HIGH_RATE and rate >= R.D1_HIGH_RATE):
             continue
         model, n = g["models"].most_common(1)[0]
         label, advice = ADVICE.get(cls, ADVICE["other"])
         conc = ""
-        if len(g["models"]) > 1 and n / g["errors"] >= 0.6:
+        if len(g["models"]) > 1 and n / g["errors"] >= R.D1_ONE_MODEL_SHARE:
             conc = " El %d %% de estos errores son de `%s`." % (round(100 * n / g["errors"]), model)
         elif len(g["models"]) == 1:
             conc = " Todos con `%s`." % model
@@ -548,10 +516,10 @@ def d2_agent_cost(ctx):
     for a in agents:
         others = [o for o in agents if o is not a]
         msgs = sum(o["messages"] for o in others)
-        if a["messages"] < 20 or msgs < 20:
+        if a["messages"] < R.D2_MIN_MESSAGES or msgs < R.D2_MIN_MESSAGES:
             continue
         ref = sum(o["cost_usd"] for o in others) / msgs  # cost per message of all the other agents together
-        if a["cost_share"] >= 0.4 and ref > 0 and a["cost_per_message"] >= 2 * ref:
+        if a["cost_share"] >= R.D2_MIN_SHARE and ref > 0 and a["cost_per_message"] >= R.D2_COST_RATIO * ref:
             saved = a["cost_usd"] - a["messages"] * ref
             out.append(_finding(
                 "D2", "El agente `%s` concentra el coste" % a["agent"],
@@ -562,7 +530,7 @@ def d2_agent_cost(ctx):
                     ", ".join("`%s`" % m for m in a["top_models_outside_commands"]) or "—", a["cost_in_commands"]),
                 ("Casi todo el gasto es uso directo del agente, no de comandos: fija un modelo más barato por defecto para `%s` "
                  "(`agent.%s.model` en opencode.jsonc) y cambia al caro solo cuando la tarea lo pida." % (a["agent"], a["agent"])
-                 if a["cost_outside_commands"] >= 0.7 * a["cost_usd"] else
+                 if a["cost_outside_commands"] >= R.D2_OUTSIDE_COMMANDS_SHARE * a["cost_usd"] else
                  "Buena parte del gasto viene de comandos: revisa el modelo fijado en ellos (sección 6) antes que el del agente.")
                 + " Comprueba también si el agente lee más contexto del necesario.",
                 impact_usd=saved, subject=a["agent"]))
@@ -573,7 +541,7 @@ def d3_loops(ctx):
     t = ctx["tables"]["turns"]
     out = []
     loops = t["loops"]
-    if len(loops) >= 3:
+    if len(loops) >= R.D3_MIN_CASES:
         repeated = sum(l["repeated_calls"] for l in loops)
         tools = Counter(l["tool"] for l in loops).most_common(3)
         out.append(_finding(
@@ -585,7 +553,7 @@ def d3_loops(ctx):
             impact_usd=repeated * ctx["avg_call_cost"], impact_count=repeated,
             sessions=[l["session"] for l in loops], subject="loops"))
     streaks = t["error_streaks"]
-    if len(streaks) >= 3:
+    if len(streaks) >= R.D3_MIN_CASES:
         out.append(_finding(
             "D3", "Rachas de errores seguidos",
             "%d turnos encadenan tres o más errores de herramienta seguidos (máximo %d)." % (len(streaks), streaks[0]["consecutive_errors"]),
@@ -593,7 +561,7 @@ def d3_loops(ctx):
             "que se puede dejar fijo en el AGENTS.md del proyecto.",
             impact_count=sum(s["consecutive_errors"] for s in streaks), sessions=[s["session"] for s in streaks], subject="streaks"))
     longs = t["long_turns"]
-    if len(longs) >= 3:
+    if len(longs) >= R.D3_MIN_CASES:
         tools = Counter(l["main_tool"] for l in longs).most_common(3)
         out.append(_finding(
             "D3", "Turnos con exploración muy larga",
@@ -620,7 +588,7 @@ def d4_context(ctx):
             impact_usd=c["compaction_cost_usd"], impact_count=c["compactions"],
             sessions=[s["session"] for s in many], subject="compactions"))
     for o in c["overflow_by_model"]:
-        if o["errors"] >= 2:
+        if o["errors"] >= R.D4_MIN_OVERFLOW_ERRORS:
             out.append(_finding(
                 "D4", "`%s` desborda su contexto" % o["model"],
                 "%d errores de desbordamiento de contexto en %d sesiones." % (o["errors"], len(o["sessions"])),
@@ -643,7 +611,7 @@ def d5_permissions(ctx):
             g["classes"][c.error_class] += 1
     out = []
     for agent, g in by_agent.items():
-        if g["n"] < 3:
+        if g["n"] < R.D5_MIN:
             continue
         out.append(_finding(
             "D5", "El agente `%s` intenta acciones que no tiene permitidas" % agent,
@@ -660,7 +628,7 @@ def d5_permissions(ctx):
 def d6_cache(ctx):
     out = []
     for m in ctx["tables"]["models"]:
-        if m["input_uncached"] >= 5_000_000 and m["cache_hit"] < 0.5:
+        if m["input_uncached"] >= R.D6_MIN_UNCACHED_TOKENS and m["cache_hit"] < R.D6_MAX_CACHE_HIT:
             out.append(_finding(
                 "D6", "Caché casi sin uso en `%s/%s`" % (m["provider"], m["model"]),
                 "Acierto de caché del %.0f %% con %.1f M de tokens de entrada sin caché%s." % (
@@ -686,7 +654,7 @@ def d7_skills(ctx):
 
 def d9_aborts(ctx):
     i = ctx["tables"]["interaction"]
-    if i["aborted_quick_retry"] < 5:
+    if i["aborted_quick_retry"] < R.D9_MIN_QUICK_RETRIES:
         return []
     return [_finding(
         "D9", "Respuestas interrumpidas y vueltas a pedir",
@@ -717,10 +685,10 @@ def d8_pinned_models(ctx):
             continue
         problems = []
         for t in h["tools"]:
-            if t["errors"] >= 5 and t["rate"] >= 0.10:
+            if t["errors"] >= R.D8_MIN_ERRORS and t["rate"] >= R.D8_MIN_RATE:
                 problems.append("`%s` falla el %.0f %% (%d de %d)" % (t["tool"], 100 * t["rate"], t["errors"], t["calls"]))
         nerr = sum(h["message_errors"].values())
-        if nerr >= 5 and h["message_error_rate"] >= 0.03:
+        if nerr >= R.D8_MIN_MESSAGE_ERRORS and h["message_error_rate"] >= R.D8_MIN_MESSAGE_ERROR_RATE:
             problems.append("%d respuestas con error (%s)" % (nerr, ", ".join("%s %d" % kv for kv in sorted(h["message_errors"].items(), key=lambda x: -x[1]))))
         if not problems:
             continue
@@ -749,9 +717,9 @@ def d10_commands(ctx):
                 "`%s` → `%s`" % (c["name"], c["model"]) for c in unreachable),
             "Ejecuta cada uno una vez para comprobarlo; si fallan, cambia su `model:` por uno de un proveedor que sí uses o retíralos.",
             impact_count=len(unreachable), subject="unreachable"))
-    if ctx["days"] >= 30:
+    if ctx["days"] >= R.UNUSED_MIN_DAYS:
         unused = [c for c in cmds if not c["uses"] and c not in unreachable]
-        if len(unused) >= 3:
+        if len(unused) >= R.D10_MIN_UNUSED:
             out.append(_finding(
                 "D10", "Comandos instalados que no se usan",
                 "%d de %d comandos no se han usado en %d días: %s." % (len(unused), len(cmds), ctx["days"], ", ".join("`%s`" % c["name"] for c in unused)),

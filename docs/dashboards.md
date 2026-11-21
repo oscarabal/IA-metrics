@@ -44,10 +44,12 @@ dicen dónde.
 
 Una cifra por herramienta, con su color. Para ver de un vistazo cuál pesa más.
 
-### Coste diario por herramienta
+### Coste por herramienta en el tiempo
 
-Barras por día, una serie por herramienta. Un pico señala un día con mucho trabajo o con un modelo caro; para
-saber cuál, abre el dashboard de esa herramienta en ese día.
+Barras apiladas, una serie por herramienta. El tamaño de cada barra se adapta al periodo: 1 minuto con «últimos
+15 minutos», 6 horas con una semana, un día con un mes, semanas o meses con periodos largos (pasa el ratón para
+ver el intervalo). Un pico señala un momento con mucho trabajo o con un modelo caro; para saber cuál, abre el
+dashboard de esa herramienta en ese periodo.
 
 ### Reparto del coste
 
@@ -62,6 +64,20 @@ trabajo de la sesión. Sirve para saber a qué se dedica el gasto.
 
 Tabla para comparar las dos herramientas: USD por millón de tokens, coste medio por respuesta y acierto de
 caché. Un USD por millón más bajo significa modelos más baratos o más caché.
+
+### Estado de las fuentes
+
+Cuatro cifras para saber si un dashboard vacío es real o un fallo. Salen de Prometheus y muestran el estado
+actual, no el del periodo (salvo la telemetría).
+
+- **Última actividad registrada:** la última respuesta del modelo que ha visto cada fuente (conversaciones y
+  telemetría de Claude Code, OpenCode). Si acabas de usar la herramienta y aquí sale antiguo, sus datos no llegan.
+  Si sale antiguo y no la has usado, el dashboard vacío con «últimos 15 minutos» es correcto.
+- **Retraso de lectura:** hace cuánto leyó cada colector su fuente. Verde, menos de 10 minutos; naranja, hasta
+  una hora; rojo, más (el colector no puede leer: mira su log).
+- **Servicios:** si Prometheus llega a cada servicio. Los de una herramienta que no instalaste salen caídos.
+- **Telemetría de Claude Code en el periodo:** eventos y puntos de métricas que recibió el OTel Collector,
+  líneas que guardó Loki y, en rojo si hay alguno, los rechazados o no guardados (eventos perdidos).
 
 ## Claude Code
 
@@ -82,8 +98,9 @@ caché y entrada). Cuanto más alto, más barato: las lecturas de caché cuestan
 **Sesiones con actividad.** Sesiones con alguna respuesta en el periodo. Al pulsar la cifra se abre la lista
 de sesiones.
 
-**Evolución diaria.** Barras de coste (eje izquierdo) y línea de tokens en millones (eje derecho) por día. Si
-las barras crecen más que la línea, ese día se usaron modelos o efforts más caros.
+**Evolución.** Barras de coste (eje izquierdo) y línea de tokens en millones (eje derecho), con barras que se
+adaptan al periodo como en el Resumen IA. Si las barras crecen más que la línea, en ese momento se usaron modelos
+o efforts más caros.
 
 **Coste por effort.** Barras con el gasto de cada nivel de esfuerzo de razonamiento. Si casi todo está en
 `high` o `xhigh`, trabajar en un nivel más bajo para tareas sencillas ahorra. «desconocido» son peticiones sin
@@ -161,13 +178,13 @@ fallan, las últimas 13 semanas. Si añades una regla a `CLAUDE.md`, aquí se ve
 **Bytes devueltos al contexto por herramienta.** Lo que cada herramienta devolvió al contexto según la
 telemetría, con los tokens aproximados.
 
-### Por hora (fila plegada)
+### Evolución por modelo (fila plegada)
 
-**Tokens por modelo (por hora).** Tokens de cada hora, apilados por modelo, en millones. Para ver a qué horas
-se trabaja y con qué.
+**Tokens por modelo.** Tokens apilados por modelo, en millones, con barras que se adaptan al periodo. Con un día
+o una semana sirve para ver a qué horas se trabaja y con qué.
 
-**Coste por modelo y effort (por hora).** Coste de cada hora por modelo y effort. El effort solo se conoce en
-las peticiones con telemetría; el resto aparece como «sin telemetría».
+**Coste por modelo y effort.** Coste por modelo y effort, con las mismas barras. El effort sale de la telemetría
+o de la conversación; sin ninguno aparece como «desconocido».
 
 ## OpenCode
 
@@ -252,3 +269,4 @@ se alargan demasiado o las respuestas no van por donde quieres.
 | ¿Me voy a quedar sin cuota? | OpenCode → Cuota y uso por proveedor |
 | ¿Ha funcionado la regla que añadí? | Errores evitables por herramienta, por semana |
 | ¿Por qué un coste sale 0 o falta? | Modelos sin precio → página de precios |
+| ¿Por qué el dashboard sale vacío? | Resumen IA → Estado de las fuentes |

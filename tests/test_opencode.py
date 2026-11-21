@@ -266,6 +266,12 @@ class OpenCodeCollector(unittest.TestCase):
         self.assertEqual(self.srv.get("/health", host="evil.example.com")[0], 421)
         self.assertEqual(self.srv.get("/health", host="127.0.0.1:9100")[0], 200)   # what the healthcheck sends
 
+    def test_source_freshness(self):
+        """«Estado de las fuentes»: newest message of opencode.db and when the background thread read it."""
+        newest = max(m[2] for m in fixtures.OC_MESSAGES)
+        self.assertEqual(helpers.total(self.series, "opencode_last_message_timestamp_seconds"), newest // 1000)
+        self.assertGreater(helpers.total(self.series, "opencode_db_read_timestamp_seconds"), fixtures.T0 / 1000)
+
     def test_no_legacy_series(self):
         """The per-day and per-week series are gone from the scrape (ADR 0002): only /data has them."""
         names = {n for n, _l, _v in self.series}

@@ -14,13 +14,13 @@ flowchart LR
     CC["Claude Code"]
     OC["OpenCode"]
     IAM["IA-metrics"]
-    MD["models.dev<br/>(caché de OpenCode)"]
+    MD["models.dev<br/>(catálogo público de precios)"]
     AI(["Chat de IA"])
     U -- "usa" --> CC
     U -- "usa" --> OC
     CC -- "telemetría y conversaciones" --> IAM
     OC -- "base de datos" --> IAM
-    MD -. "precios (models.json)" .-> IAM
+    MD -. "precios (models.json, api.json)" .-> IAM
     IAM -- "dashboards, sesiones, precios, informe" --> U
     U -. "pega el informe de mejoras" .-> AI
 ```
@@ -42,6 +42,7 @@ la persona lo copia a un chat de IA.
 | OpenCode | `~/.cache/opencode/models.json` y estado de cuotas (solo lectura) | entrada | Límites de contexto y precios de models.dev; cuotas del plugin `opencode-quota` |
 | Navegador | HTTP a `127.0.0.1:3000`, `:9100`, `:9101` | salida | Grafana y páginas de los colectores |
 | grafana.com | HTTPS en el primer arranque | entrada | Plugin Infinity |
+| models.dev | HTTPS una vez al día (`MODELS_DEV_URL`, se puede desactivar) | entrada | Catálogo de precios de respaldo para Claude Code ([ADR 0006](../adr/0006-precios-de-claude-code-desde-models-dev.md)) |
 
 ## Correspondencia de canales
 

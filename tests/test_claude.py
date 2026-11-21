@@ -53,6 +53,45 @@ class ClaudeCollector(unittest.TestCase):
         ix = index.INDEX
         self.assertEqual(ix.costs, fixtures.CC_TELEMETRY_COST)
 
+    def test_models_dev_fallback(self):
+        """A model missing from prices.json is priced with models.dev, downloaded and then applied to old messages."""
+        import json as _json
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        catalogue = {"anthropic": {"models": {"claude-nuevo-9-20990101": {"cost": {"input": 2, "output": 8, "cache_read": 0.2, "cache_write": 2.5}}}},
+                     "otro": {"models": {"claude-nuevo-9": {"cost": {"input": 99, "output": 99}}}}}   # not a Claude provider: ignored
+        body = _json.dumps(catalogue).encode()
+
+        class Catalogue(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+        srv = HTTPServer(("127.0.0.1", 0), Catalogue)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        saved = pricing.MODELS_DEV_FILE, collector.MODELS_DEV_URL
+        pricing.MODELS_DEV_FILE = os.path.join(helpers.tmpdir(), "models-dev.json")
+        collector.MODELS_DEV_URL = "http://127.0.0.1:%d/api.json" % srv.server_address[1]
+        s = next(iter(index.INDEX.sessions.values()))
+        s["msgs"]["msg_dev"] = [fixtures.T0, "claude-nuevo-9-20990101", 1000, 100, 0, 0, False, "req_dev", None, 0, None, None]
+        try:
+            self.assertEqual(collector.refresh_models_dev(), 1)                        # downloaded, then repriced
+            self.assertTrue(os.path.exists(pricing.MODELS_DEV_FILE))
+            self.assertAlmostEqual(s["msgs"]["msg_dev"][10], (1000 * 2 + 100 * 8) / 1e6)
+            self.assertEqual(pricing.period_for("claude-nuevo-9", fixtures.T0)["source"], "models.dev")
+            self.assertEqual(pricing.period_for("claude-sonnet-4-5", fixtures.T0).get("source"), None)   # prices.json first
+            self.assertEqual(collector.prices_status(), "OK\n")
+            self.assertIn("models.dev", self.srv.get("/prices")[1])
+            collector.MODELS_DEV_URL = ""                                                  # disabled: no request, copy kept
+            self.assertEqual(collector.refresh_models_dev(now=fixtures.T0 / 1000 + 10 ** 9), 0)
+        finally:
+            del s["msgs"]["msg_dev"]
+            pricing.MODELS_DEV_FILE, collector.MODELS_DEV_URL = saved
+            srv.shutdown()
+
     def test_legacy_oracle(self):
         s = self.legacy
         self.assertEqual(helpers.total(s, "claude_coach_day_tool_errors"), 1)
@@ -355,6 +394,17 @@ class ClaudeCollector(unittest.TestCase):
         self.assertTrue(body.startswith("ok"), body)
         self.assertEqual(self.srv.get("/health", host="evil.example.com")[0], 421)
         self.assertEqual(self.srv.get("/health", host="127.0.0.1:9100")[0], 200)   # what the healthcheck sends
+
+    def test_source_freshness(self):
+        """«Estado de las fuentes»: newest answer in the conversations and in the telemetry, and when each was last read."""
+        s = self.series
+        newest = max(ts for _s, ts, _r, _m, tok, _side in fixtures.CC_ASSISTANT if sum(tok))
+        self.assertEqual(helpers.total(s, "claude_index_last_message_timestamp_seconds"), newest // 1000)
+        by_req = {r[2]: r[1] for r in fixtures.CC_ASSISTANT}
+        self.assertEqual(helpers.total(s, "claude_telemetry_last_event_timestamp_seconds"),
+                         max(by_req[r] for r in fixtures.CC_TELEMETRY_COST) // 1000)
+        for name in ("claude_index_last_scan_timestamp_seconds", "claude_telemetry_last_check_timestamp_seconds"):
+            self.assertGreater(helpers.total(s, name), fixtures.T0 / 1000, name)   # read in this run
 
     def test_no_legacy_series(self):
         """The per-day and per-week series are gone from the scrape (ADR 0002): only /data has them."""

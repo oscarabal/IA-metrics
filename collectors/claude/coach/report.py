@@ -16,31 +16,18 @@ import index  # noqa: E402  (the collector's top-level module: hybrid_cost)
 from . import inventory
 from . import store as coach_store
 from .errors import ADVICE, NOT_AVOIDABLE
+from common import coach_rules as R  # noqa: E402
+from common.coach_rules import FORMAT_VERSION, finding as _finding, pct as _pct, quantile as _quantile, severity  # noqa: E402,F401
 
-FORMAT_VERSION = 1
 SOURCE = "claude-code"
 
-RULES = {
-    "D1": "Errores de herramienta", "D2": "Coste por modelo u origen", "D3": "Bucles y exploración", "D4": "Contexto",
-    "D5": "Permisos", "D6": "Caché", "D7": "Skills", "D8": "Modelo fijado en comandos", "D9": "Interrupciones",
-    "D10": "Comandos sin uso", "C1": "Effort", "C2": "Consumo de fondo", "C3": "Resultados grandes",
-    "C4": "Planes rechazados", "C5": "Peticiones de permiso", "C6": "Contexto inicial",
-}
+RULES = R.rules("Coste por modelo u origen",
+                C1="Effort", C2="Consumo de fondo", C3="Resultados grandes",
+                C4="Planes rechazados", C5="Peticiones de permiso", C6="Contexto inicial")
 
 NOT_LOOPS = {"TodoWrite", "AskUserQuestion", "mcp__ccd_turn__update_plan"}
 HIGH_EFFORT = {"high", "xhigh", "max"}
 BACKGROUND_HINTS = ("suggest", "title", "summar", "compact", "hook", "classif", "topic", "memory", "quota")
-
-
-def _pct(a, b):
-    return (a / b) if b else 0.0
-
-
-def _quantile(values, q):
-    if not values:
-        return 0
-    values = sorted(values)
-    return values[min(len(values) - 1, int(q * len(values)))]
 
 
 def _day(ms):
@@ -387,7 +374,7 @@ def interaction_stats(p):
     quick_sessions = set()
     for ts, sid in p.interrupts:
         nxt = [t for t in p.turn_starts.get(sid, []) if t > ts]
-        if nxt and min(nxt) - ts <= 120000:
+        if nxt and min(nxt) - ts <= R.D9_QUICK_RETRY_MS:
             quick += 1
             quick_sessions.add(sid)
     plans = [c for c in p.calls if c["tool"] == "ExitPlanMode"]
@@ -412,7 +399,7 @@ def model_health(p):
             errs[c["model"]][c["tool"]] += 1
     msgs = Counter(m["model"] for m in p.msgs)
     out = {}
-    for model in set(msgs) | set(calls):
+    for model in sorted(set(msgs) | set(calls)):  # sorted: the same report on every run
         tools = [{"tool": t, "errors": n, "calls": calls[model][t], "rate": round(_pct(n, calls[model][t]), 4)} for t, n in errs[model].most_common()]
         out[model] = {"messages": msgs[model], "tool_calls": sum(calls[model].values()), "tool_errors": sum(errs[model].values()),
                       "tools": tools, "message_errors": {}, "message_error_rate": 0.0}
@@ -489,23 +476,6 @@ def config_inventory(skills):
 
 # ----------------------------------------------------------------------------- detectors
 
-def severity(f, summary):
-    cost = summary["cost_usd"]
-    usd = f.get("impact_usd") or 0
-    if cost > 0 and usd:
-        share = usd / cost
-        return "alta" if share >= 0.10 else "media" if share >= 0.02 else "baja"
-    if f.get("impact_tokens"):
-        return "media" if f["impact_tokens"] >= 50_000_000 else "baja"
-    n = f.get("impact_count") or 0
-    return "alta" if n >= 100 else "media" if n >= 20 else "baja"
-
-
-def _finding(detector, title, evidence, recommendation, impact_usd=None, impact_count=None, impact_tokens=None, sessions=(), subject=""):
-    return {"detector": detector, "subject": subject, "title": title, "evidence": evidence, "recommendation": recommendation,
-            "impact_usd": round(impact_usd, 4) if impact_usd is not None else None, "impact_count": impact_count,
-            "impact_tokens": impact_tokens, "sessions": list(sessions)[:5]}
-
 
 def d1_tool_errors(ctx):
     rows = defaultdict(lambda: {"errors": 0, "models": Counter(), "sessions": Counter()})
@@ -521,12 +491,12 @@ def d1_tool_errors(ctx):
     out = []
     for (tool, cls), g in rows.items():
         rate = _pct(g["errors"], calls.get(tool, 0))
-        if g["errors"] < 10 and not (g["errors"] >= 5 and rate >= 0.05):
+        if g["errors"] < R.D1_MIN_ERRORS and not (g["errors"] >= R.D1_MIN_ERRORS_HIGH_RATE and rate >= R.D1_HIGH_RATE):
             continue
         model, n = g["models"].most_common(1)[0]
         label, advice = ADVICE.get(cls, ADVICE["other"])
         conc = (" Todos con `%s`." % model) if len(g["models"]) == 1 else (
-            " El %d %% de estos errores son de `%s`." % (round(100 * n / g["errors"]), model) if n / g["errors"] >= 0.6 else "")
+            " El %d %% de estos errores son de `%s`." % (round(100 * n / g["errors"]), model) if n / g["errors"] >= R.D1_ONE_MODEL_SHARE else "")
         out.append(_finding("D1", "`%s`: %s" % (tool, label.lower()),
                             "%d errores de clase `%s` en %d llamadas a `%s` (%.1f %%).%s" % (g["errors"], cls, calls.get(tool, 0), tool, 100 * rate, conc),
                             advice, impact_usd=g["errors"] * ctx["avg_call_cost"], impact_count=g["errors"],
@@ -544,11 +514,11 @@ def d2_cost_concentration(ctx):
     for m in models:
         n = m["messages_with_cost"]
         rest_msgs = total_msgs - n
-        if n < 20 or rest_msgs < 20:
+        if n < R.D2_MIN_MESSAGES or rest_msgs < R.D2_MIN_MESSAGES:
             continue
         ref = (total_cost - m["cost_usd"]) / rest_msgs
         cpm = m["cost_usd"] / n
-        if m["cost_share"] >= 0.4 and ref > 0 and cpm >= 2 * ref:
+        if m["cost_share"] >= R.D2_MIN_SHARE and ref > 0 and cpm >= R.D2_COST_RATIO * ref:
             out.append(_finding("D2", "El modelo `%s` concentra el coste" % m["model"],
                                 "%d %% del coste conocido (%.2f $), con %.4f $ por mensaje con coste: %.1f veces el del resto de modelos juntos (%.4f $)." % (
                                     round(100 * m["cost_share"]), m["cost_usd"], cpm, cpm / ref, ref),
@@ -556,7 +526,7 @@ def d2_cost_concentration(ctx):
                                 "o fíjalo solo en los comandos que lo pidan (`model:` en su frontmatter)." % m["model"],
                                 impact_usd=m["cost_usd"] - n * ref, subject=m["model"]))
     for a in ctx["tables"]["agents"]:
-        if a["agent"] == "subagentes" and a["cost_share"] >= 0.4 and a["messages"] >= 20:
+        if a["agent"] == "subagentes" and a["cost_share"] >= R.D2_MIN_SHARE and a["messages"] >= R.D2_MIN_MESSAGES:
             out.append(_finding("D2", "Los subagentes concentran el coste",
                                 "%d %% del coste conocido (%.2f $) en %d mensajes de subagentes. Modelos: %s." % (
                                     round(100 * a["cost_share"]), a["cost_usd"], a["messages"], ", ".join("`%s`" % x for x in a["top_models"])),
@@ -568,7 +538,7 @@ def d2_cost_concentration(ctx):
 def d3_loops(ctx):
     t = ctx["tables"]["turns"]
     out = []
-    if len(t["loops"]) >= 3:
+    if len(t["loops"]) >= R.D3_MIN_CASES:
         repeated = sum(x["repeated_calls"] for x in t["loops"])
         tools = Counter(x["tool"] for x in t["loops"]).most_common(3)
         out.append(_finding("D3", "Llamadas repetidas con los mismos argumentos",
@@ -577,13 +547,13 @@ def d3_loops(ctx):
                             "Suele indicar que el agente no ve el resultado que espera y reintenta. Da la ruta o el criterio de éxito en el prompt, "
                             "o añade a CLAUDE.md: «Si una llamada no da el resultado esperado dos veces, para y explica qué ocurre».",
                             impact_usd=repeated * ctx["avg_call_cost"], impact_count=repeated, sessions=[x["session"] for x in t["loops"]], subject="loops"))
-    if len(t["error_streaks"]) >= 3:
+    if len(t["error_streaks"]) >= R.D3_MIN_CASES:
         out.append(_finding("D3", "Rachas de errores seguidos",
                             "%d turnos encadenan tres o más errores evitables seguidos (máximo %d)." % (len(t["error_streaks"]), t["error_streaks"][0]["consecutive_errors"]),
                             "El agente sigue intentándolo sin cambiar de estrategia. Suele faltar contexto (rutas, comandos de build, shell) "
                             "que se puede dejar fijo en el CLAUDE.md del proyecto.",
                             impact_count=sum(x["consecutive_errors"] for x in t["error_streaks"]), sessions=[x["session"] for x in t["error_streaks"]], subject="streaks"))
-    if len(t["long_turns"]) >= 3:
+    if len(t["long_turns"]) >= R.D3_MIN_CASES:
         tools = Counter(x["main_tool"] for x in t["long_turns"]).most_common(3)
         out.append(_finding("D3", "Turnos con exploración muy larga",
                             "%d turnos superan %d llamadas a herramientas (mediana %d, p95 %d, máximo %d). Herramienta dominante: %s." % (
@@ -617,7 +587,7 @@ def d5_permissions(ctx):
     out = []
     for tool, n in by_tool.items():
         total = sum(n.values())
-        if total < 3:
+        if total < R.D5_MIN:
             continue
         out.append(_finding("D5", "`%s`: acciones bloqueadas o rechazadas" % tool,
                             "%d llamadas a `%s` no se ejecutaron (rechazadas a mano: %d; bloqueadas por regla: %d; por hook: %d)." % (
@@ -633,13 +603,13 @@ def d6_cache(ctx):
                      "Acierto de caché del %.0f %% con %.1f M de tokens de entrada sin caché." % (100 * m["cache_hit"], m["input_uncached"] / 1e6),
                      "Busca lo que cambia al principio del contexto en cada petición (instrucciones que se regeneran, fechas, herramientas MCP que se conectan y desconectan).",
                      impact_tokens=m["input_uncached"], subject=m["model"])
-            for m in ctx["tables"]["models"] if m["input_uncached"] >= 5_000_000 and m["cache_hit"] < 0.5]
+            for m in ctx["tables"]["models"] if m["input_uncached"] >= R.D6_MIN_UNCACHED_TOKENS and m["cache_hit"] < R.D6_MAX_CACHE_HIT]
 
 
 def d7_skills(ctx):
     sk = ctx["config"]["skills"]
     unused = [s["name"] for s in sk if not s["uses"]]
-    if ctx["days"] < 30 or len(unused) < 2:
+    if ctx["days"] < R.UNUSED_MIN_DAYS or len(unused) < R.D7_MIN_UNUSED:
         return []
     return [_finding("D7", "Skills instaladas que no se usan",
                      "%d de %d skills de `~/.claude/skills` no se han cargado en %d días: %s." % (len(unused), len(sk), ctx["days"], ", ".join("`%s`" % n for n in unused)),
@@ -657,7 +627,7 @@ def d8_pinned_models(ctx):
         h = health.get(model) or next((v for k, v in health.items() if model in k), None)
         if not h:
             continue
-        problems = ["`%s` falla el %.0f %% (%d de %d)" % (t["tool"], 100 * t["rate"], t["errors"], t["calls"]) for t in h["tools"] if t["errors"] >= 5 and t["rate"] >= 0.10]
+        problems = ["`%s` falla el %.0f %% (%d de %d)" % (t["tool"], 100 * t["rate"], t["errors"], t["calls"]) for t in h["tools"] if t["errors"] >= R.D8_MIN_ERRORS and t["rate"] >= R.D8_MIN_RATE]
         if problems:
             out.append(_finding("D8", "El comando `%s` usa un modelo con problemas" % c["name"],
                                 "Modelo fijado `%s`, usado %d veces por este comando. Con ese modelo, en el periodo: %s." % (c["model"], c["uses"], "; ".join(problems)),
@@ -668,7 +638,7 @@ def d8_pinned_models(ctx):
 
 def d9_aborts(ctx):
     i = ctx["tables"]["interaction"]
-    if i["aborted_quick_retry"] < 5:
+    if i["aborted_quick_retry"] < R.D9_MIN_QUICK_RETRIES:
         return []
     return [_finding("D9", "Respuestas interrumpidas y vueltas a pedir",
                      "%d respuestas se interrumpieron y en menos de dos minutos se volvió a escribir al agente (%d interrupciones en total)." % (i["aborted_quick_retry"], i["aborted"]),
@@ -689,9 +659,9 @@ def d10_commands(ctx):
                             "Hay comandos con y sin el prefijo `ai-`: %s." % ", ".join("`%s` / `%s`" % (d, d[3:]) for d in dup),
                             "Quédate con una versión de cada uno para no repartir el uso ni mantener dos plantillas.",
                             impact_count=len(dup), subject="duplicates"))
-    if ctx["days"] >= 30:
+    if ctx["days"] >= R.UNUSED_MIN_DAYS:
         unused = [c["name"] for c in cmds if not c["uses"] and c["name"] not in dup]
-        if len(unused) >= 3:
+        if len(unused) >= R.D10_MIN_UNUSED:
             out.append(_finding("D10", "Comandos instalados que no se usan",
                                 "%d de %d comandos no se han usado en %d días: %s." % (len(unused), len(cmds), ctx["days"], ", ".join("`%s`" % n for n in unused)),
                                 "Retira los que ya no necesites: cada comando ocupa sitio en la lista y en el mantenimiento.",

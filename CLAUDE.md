@@ -23,10 +23,12 @@ docker compose up -d --force-recreate otel-collector    # aplicar cambios en con
 
 - `collectors/common/` — código compartido: `ledger.py` (motor de consultas y API `/data`, ADR 0002),
   `security.py` (cabecera Host), `report_page.py` (página del informe), `html_page.py` (CSS y helpers de las
-  páginas), `markdown.py` (formato del informe).
+  páginas), `markdown.py` (formato del informe), `coach_rules.py` (catálogo de reglas, umbrales de D1–D10,
+  severidad y forma de un hallazgo: los dos `coach/report.py` los importan; un umbral se cambia solo ahí).
 - `collectors/*/ledger_source.py` — el registro por petición de cada herramienta: los conjuntos de
   datos que sirve `/data`. Mismas columnas en las dos; si añades una, añádela en ambas.
-- `collectors/claude/prices.json` + `pricing.py` — tabla de precios versionada por fecha para el coste
+- `collectors/claude/prices.json` + `pricing.py` — tabla de precios versionada por fecha (y, para los modelos que
+  no están, la copia diaria de models.dev en `/state/models-dev.json`, ADR 0006) para el coste
   de Claude Code sin telemetría. `index.hybrid_cost` es el único punto que decide el coste.
 - `collectors/claude/` — antiguo `session-map`: `map.py` (HTTP :9100), `index.py` (lectura incremental
   de las conversaciones: tokens, effort, herramientas, permisos, prompts), `pages.py`, `coach/` (informe,
@@ -42,7 +44,9 @@ docker compose up -d --force-recreate otel-collector    # aplicar cambios en con
   `docs/opencode.md` (cada panel y de dónde sale). Si cambias un panel, actualiza su guía.
 - `config/` — OTel Collector, Loki, Prometheus y provisioning de Grafana.
 - `grafana/dashboards/{global,claude,opencode}` — una carpeta de Grafana por subcarpeta.
-- `installer/install.ps1` — instalador (Windows PowerShell 5.1 compatible; ficheros con CRLF y BOM).
+- `installer/install.ps1` — instalador (Windows PowerShell 5.1 compatible; ficheros con CRLF y BOM), también
+  `-Update` y `-Uninstall` (`Actualizar.bat`, `Desinstalar.bat`). Desinstalar solo quita de `settings.json` las
+  variables que el instalador puso y con su valor (`tests/installer_uninstall.ps1`).
 
 ## Convenciones que hay que respetar
 
@@ -70,6 +74,12 @@ docker compose up -d --force-recreate otel-collector    # aplicar cambios en con
   URL de cada dashboard devuelve los campos que el panel usa.
 - **Sin series por día en Prometheus:** las `*_day_*`/`*_week_*` se retiraron (ADR 0002); su cálculo vive
   solo en `tests/legacy_oracle.py`, como oráculo de los tests de equivalencia. No lo importes desde los colectores.
+- **Frescura de las fuentes:** cada colector publica cuándo vio la última actividad y cuándo leyó su fuente
+  (`claude_index_last_*`, `claude_telemetry_last_*`, `opencode_last_message_*`, `opencode_db_read_*`, en segundos), y
+  Prometheus lee las métricas internas del OTel Collector (`:8888`) y de Loki, sin publicarlas. Las usa la fila «Estado
+  de las fuentes» del Resumen IA; una fuente nueva publica las suyas.
+- **Gráficos en el tiempo con `group=auto`:** la API elige el tamaño de grupo según el rango y nunca da un `time`
+  anterior a `from`; los paneles de evolución lo usan para no quedar vacíos con rangos cortos.
 - **El scrape no lee datos:** `/metrics` de OpenCode sirve lo que calcula el hilo de fondo (`refresh_series`,
   cada `SERIES_SECONDS`); el de Claude Code, lo que ya tiene el índice en memoria.
 - **Código común en `collectors/common/`:** `html_page.py` (CSS y helpers de las páginas) y `markdown.py`

@@ -10,6 +10,7 @@ import re
 import threading
 import time
 import urllib.parse
+import urllib.request
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -75,6 +76,49 @@ def prices_page():
     pending = None if index.INDEX.done else (
         "Leyendo las conversaciones por primera vez (%d de %d ficheros): la tabla «Tus modelos» aún no está completa." % index.INDEX.progress)
     return pages.render_prices(used, table_rows, source, DASHBOARD_URL, pending)
+
+
+# models.dev, the price catalogue OpenCode also uses: fallback for models missing from prices.json.
+# Empty MODELS_DEV_URL disables the download (the stack then makes no request outside the machine).
+MODELS_DEV_URL = os.environ.get("MODELS_DEV_URL", "https://models.dev/api.json")
+MODELS_DEV_EVERY = 86400
+MODELS_DEV_MAX_BYTES = 30_000_000
+
+
+def refresh_models_dev(now=None):
+    """Download models.dev to pricing.MODELS_DEV_FILE when the copy is missing or a day old, then price the
+    messages that had no price. Returns how many messages got one."""
+    now = now or time.time()
+    path = pricing.MODELS_DEV_FILE
+    try:
+        age = now - os.path.getmtime(path)
+    except OSError:
+        age = None
+    if MODELS_DEV_URL and (age is None or age >= MODELS_DEV_EVERY):
+        req = urllib.request.Request(MODELS_DEV_URL, headers={"User-Agent": "ia-metrics"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            body = r.read(MODELS_DEV_MAX_BYTES + 1)
+        if len(body) > MODELS_DEV_MAX_BYTES:
+            raise ValueError("models.dev: respuesta demasiado grande")
+        if not isinstance(json.loads(body), dict):
+            raise ValueError("models.dev: formato inesperado")
+        tmp = path + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(body)
+        os.replace(tmp, path)
+    n = index.INDEX.reprice() if pricing.dev_prices() else 0
+    if n:
+        print("Precios de models.dev aplicados a %d mensajes sin precio en prices.json." % n, flush=True)
+    return n
+
+
+def models_dev_loop():
+    while True:
+        try:
+            refresh_models_dev()
+        except Exception as e:  # offline or models.dev down: prices.json keeps working
+            print("AVISO: no se pudo actualizar la copia de models.dev (%s)." % type(e).__name__, flush=True)
+        time.sleep(3600)
 
 
 def prices_status():
@@ -166,6 +210,17 @@ def collect():
 
     add("# TYPE claude_index_scan_complete gauge")
     add("claude_index_scan_complete %s" % (1 if ix.done else 0))
+    # Freshness of each source («Estado de las fuentes»): newest activity seen and when it was last read
+    with ix.lock:
+        newest = max((m[0] for s in ix.sessions.values() for m in s["msgs"].values() if m[0]), default=0)
+    add("# TYPE claude_index_last_message_timestamp_seconds gauge")
+    add("claude_index_last_message_timestamp_seconds %d" % (newest // 1000))
+    add("# TYPE claude_index_last_scan_timestamp_seconds gauge")
+    add("claude_index_last_scan_timestamp_seconds %d" % ix.scanned_at)
+    add("# TYPE claude_telemetry_last_event_timestamp_seconds gauge")
+    add("claude_telemetry_last_event_timestamp_seconds %d" % (ix.loki_last_event_ms // 1000))
+    add("# TYPE claude_telemetry_last_check_timestamp_seconds gauge")
+    add("claude_telemetry_last_check_timestamp_seconds %d" % ix.loki_checked_at)
     add("# TYPE claude_index_cost_requests gauge")
     add("claude_index_cost_requests %s" % len(ix.costs))
     add("# TYPE claude_model_without_price_messages gauge")
@@ -420,4 +475,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     coach_metrics.start(index.INDEX)  # restores stored costs first, then runs the coach's background work
     index.start()
+    threading.Thread(target=models_dev_loop, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

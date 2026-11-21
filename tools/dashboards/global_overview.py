@@ -59,6 +59,75 @@ def total(title, dataset, field, x, unit="currencyUSD", desc="", **params):
                  options=dict(STAT, reduceOptions={"calcs": ["sum"], "fields": "/^%s$/" % field, "values": False}))
 
 
+PROM = {"type": "prometheus", "uid": "prometheus"}
+
+
+def prom(ref, expr, legend):
+    return {"refId": ref, "datasource": PROM, "expr": expr, "instant": True, "range": False, "legendFormat": legend}
+
+
+def counter(name):
+    """A collector counter by name, with or without the _total suffix (it depends on the collector's version)."""
+    return '{__name__=~"%s(_total)?"}' % name
+
+
+def sources_row(y):
+    """«Estado de las fuentes»: is each source up to date, is each service up, does the telemetry arrive."""
+    row = {"id": 300, "type": "row", "title": "Estado de las fuentes", "collapsed": False,
+           "gridPos": {"x": 0, "y": y, "w": 24, "h": 1}, "panels": []}
+    stat = {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}, "graphMode": "none",
+            "textMode": "value_and_name", "justifyMode": "center", "orientation": "horizontal", "wideLayout": True,
+            "text": {"titleSize": 13, "valueSize": 20}}
+    last = panel("Última actividad registrada", "stat", [
+        prom("A", "max(claude_index_last_message_timestamp_seconds > 0) * 1000", "Claude Code: conversaciones"),
+        prom("B", "max(claude_telemetry_last_event_timestamp_seconds > 0) * 1000", "Claude Code: telemetría"),
+        prom("C", "max(opencode_last_message_timestamp_seconds > 0) * 1000", "OpenCode")],
+        {"x": 0, "y": y + 1, "w": 6, "h": 6}, unit="dateTimeFromNow", decimals=0, datasource=PROM,
+        desc="Cuándo fue la última respuesta del modelo que ha visto cada fuente. Si acabas de usar la herramienta y aquí sale "
+             "antiguo, sus datos no están llegando: mira «Retraso de lectura» y «Servicios». Con un periodo corto (15 minutos), "
+             "un dashboard vacío con una actividad antigua aquí significa que no has usado la herramienta en ese tiempo.",
+        options=dict(stat, colorMode="none"))
+    last["fieldConfig"]["defaults"]["noValue"] = "sin datos"
+    delay = panel("Retraso de lectura", "stat", [
+        prom("A", "time() - max(claude_index_last_scan_timestamp_seconds > 0)", "Conversaciones de Claude Code"),
+        prom("B", "time() - max(claude_telemetry_last_check_timestamp_seconds > 0)", "Telemetría (Loki)"),
+        prom("C", "time() - max(opencode_db_read_timestamp_seconds > 0)", "opencode.db")],
+        {"x": 6, "y": y + 1, "w": 6, "h": 6}, unit="s", decimals=0, datasource=PROM,
+        desc="Hace cuánto que cada colector leyó su fuente con éxito. Lo normal: menos de un minuto para las conversaciones y "
+             "Loki, y menos de tres para opencode.db. En rojo (más de una hora), el colector no puede leer: revisa "
+             "docker compose logs claude-collector u opencode-collector.",
+        options=dict(stat, colorMode="background"))
+    delay["fieldConfig"]["defaults"].update(noValue="sin leer", thresholds={"mode": "absolute", "steps": [
+        {"color": "green", "value": None}, {"color": "orange", "value": 600}, {"color": "red", "value": 3600}]},
+        color={"mode": "thresholds"})
+    up = panel("Servicios", "stat", [
+        prom("A", 'up{job=~"claude-collector|otel-collector|loki|opencode"}', "{{job}}")],
+        {"x": 12, "y": y + 1, "w": 6, "h": 6}, unit="none", decimals=0, datasource=PROM,
+        desc="Si Prometheus llega a cada servicio. Los de una herramienta que no instalaste salen como caídos: "
+             "claude-collector, otel-collector y loki son de Claude Code; opencode, de OpenCode.",
+        options=dict(stat, colorMode="background"))
+    up["fieldConfig"]["defaults"].update(color={"mode": "thresholds"}, thresholds={"mode": "absolute", "steps": [
+        {"color": "red", "value": None}, {"color": "green", "value": 1}]},
+        mappings=[{"type": "value", "options": {"0": {"text": "caído"}, "1": {"text": "en marcha"}}}])
+    tel = panel("Telemetría de Claude Code en el periodo", "stat", [
+        prom("A", "sum(increase(%s[$__range]))" % counter("otelcol_receiver_accepted_log_records"), "Eventos recibidos"),
+        prom("B", "sum(increase(%s[$__range]))" % counter("otelcol_receiver_accepted_metric_points"), "Puntos de métricas recibidos"),
+        prom("C", "sum(increase(%s[$__range])) or vector(0)" % counter("otelcol_receiver_refused_log_records|otelcol_exporter_send_failed_log_records"),
+             "Rechazados o no guardados"),
+        prom("D", "sum(increase(%s[$__range]))" % counter("loki_distributor_lines_received"), "Líneas guardadas en Loki")],
+        {"x": 18, "y": y + 1, "w": 6, "h": 6}, unit="short", decimals=0, datasource=PROM,
+        desc="Lo que ha recibido el OTel Collector de Claude Code en el periodo y lo que ha guardado Loki. «Rechazados o no "
+             "guardados» por encima de 0 significa eventos perdidos (el coste se recalcula con la tabla de precios, pero se "
+             "pierden el effort y las llamadas que no se escriben en la conversación). Los contadores empiezan de cero al "
+             "reiniciar el servicio.",
+        options=dict(stat, colorMode="value"))
+    tel["fieldConfig"]["defaults"]["color"] = {"mode": "fixed", "fixedColor": "text"}
+    tel["fieldConfig"]["overrides"] = [{"matcher": {"id": "byFrameRefID", "options": "C"}, "properties": [
+        {"id": "color", "value": {"mode": "thresholds"}},
+        {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": None}, {"color": "red", "value": 1}]}}]}]
+    return [row, last, delay, up, tel]
+
+
 def build():
     panels = [{"id": 100, "type": "row", "title": "Gasto total en asistentes de código", "collapsed": False,
                "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1}, "panels": []}]
@@ -77,14 +146,15 @@ def build():
                   {"title": "Dashboard de OpenCode", "url": "/d/opencode-usage?${__url_time_range}"}]
     panels.append(p)
 
-    p = panel("Coste diario por herramienta", "timeseries", both("usage", group="day", measures="cost"), {"x": 0, "y": 5, "w": 16, "h": 9},
-              desc="Coste de cada día por herramienta, con todo el historial de ambas. Los días se cuentan en la zona horaria "
-                   "de los colectores (TZ, por defecto Europe/Madrid).",
-              transformations=[{"id": "organize", "options": {"excludeByName": {"day": True}}},
+    p = panel("Coste por herramienta en el tiempo", "timeseries", both("usage", group="auto", measures="cost"), {"x": 0, "y": 5, "w": 16, "h": 9},
+              desc="Coste por herramienta a lo largo del periodo elegido, con todo el historial de ambas. El tamaño de cada barra se "
+                   "adapta al periodo (de 1 minuto con «últimos 15 minutos» a semanas con varios meses), en la zona horaria de los "
+                   "colectores (TZ, por defecto Europe/Madrid); pasa el ratón para ver el intervalo.",
+              transformations=[{"id": "organize", "options": {"excludeByName": {"auto": True, "interval": True}}},
                                {"id": "convertFieldType", "options": {"conversions": [{"targetField": "time", "destinationType": "time"}]}}],
               options={"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}})
     p["fieldConfig"]["defaults"]["custom"] = {"drawStyle": "bars", "fillOpacity": 80, "stacking": {"mode": "normal", "group": "A"},
-                                              "barAlignment": -1, "lineWidth": 1}
+                                              "barAlignment": -1, "lineWidth": 1, "axisSoftMin": 0}
     p["fieldConfig"]["overrides"] = per_tool_names()
     panels.append(p)
 
@@ -128,6 +198,7 @@ def build():
                                "Todo el coste es a precio de API (con suscripción no es lo que pagas): en Claude Code, el de su telemetría "
                                "o, si no, el de la tabla de precios; en OpenCode, el que guarda OpenCode o, si guardó 0, tokens × precio de "
                                "models.dev. Si solo instalaste una herramienta, los paneles de la otra muestran un aviso de conexión."}})
+    panels.extend(sources_row(26))
     return {"uid": "ia-overview", "title": "Resumen IA - Uso y coste", "tags": ["ia-metrics"], "timezone": "browser",
             "schemaVersion": 41, "version": 2, "editable": False, "time": {"from": "now-30d", "to": "now"}, "refresh": "5m",
             "description": "Gasto en asistentes de código: Claude Code y OpenCode juntos. Generado por tools/dashboards/global_overview.py.",

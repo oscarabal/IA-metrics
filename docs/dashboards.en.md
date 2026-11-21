@@ -43,10 +43,12 @@ the charts below tell you where.
 
 Cost per tool. One figure per tool, in its colour, to see at a glance which one weighs more.
 
-### Coste diario por herramienta
+### Coste por herramienta en el tiempo
 
-Daily cost per tool. Bars per day, one series per tool. A spike points to a day with a lot of work or an
-expensive model; to find out which, open that tool's dashboard on that day.
+Cost per tool over time. Stacked bars, one series per tool. Each bar's size follows the time range: 1 minute
+with «last 15 minutes», 6 hours with a week, one day with a month, weeks or months with long ranges (hover to
+see the interval). A spike points to a moment with a lot of work or an expensive model; to find out which, open
+that tool's dashboard on that range.
 
 ### Reparto del coste
 
@@ -61,6 +63,20 @@ is the session's working folder. It tells you what the spend goes to.
 
 Efficiency per tool. Table to compare both tools: USD per million tokens, average cost per answer and cache
 hit rate. A lower USD per million means cheaper models or more cache.
+
+### Estado de las fuentes
+
+Source status. Four figures to tell whether an empty dashboard is real or a fault. They come from Prometheus and
+show the current state, not the period's (except the telemetry).
+
+- **Última actividad registrada** (last recorded activity): the last model answer each source has seen (Claude
+  Code conversations and telemetry, OpenCode). If you just used the tool and it shows something old, its data is
+  not arriving. If it is old and you have not used it, an empty dashboard with «last 15 minutes» is right.
+- **Retraso de lectura** (read delay): how long ago each collector read its source. Green under 10 minutes;
+  orange up to an hour; red beyond (the collector cannot read: check its log).
+- **Servicios** (services): whether Prometheus reaches each service. Those of a tool you did not install show as down.
+- **Telemetría de Claude Code en el periodo** (Claude Code telemetry in the range): events and metric points the
+  OTel Collector received, lines Loki stored and, in red if any, those refused or not stored (lost events).
 
 ## Claude Code
 
@@ -82,8 +98,9 @@ cache writes and input). The higher, the cheaper: cache reads cost a tenth of re
 **Sesiones con actividad** (active sessions). Sessions with at least one answer in the period. Clicking the
 figure opens the session list.
 
-**Evolución diaria** (daily trend). Cost bars (left axis) and a token line in millions (right axis) per day.
-If the bars grow more than the line, more expensive models or efforts were used that day.
+**Evolución** (trend). Cost bars (left axis) and a token line in millions (right axis), with bars that follow
+the time range as in Resumen IA. If the bars grow more than the line, more expensive models or efforts were used
+at that moment.
 
 **Coste por effort** (cost per effort). Bars with the spend at each reasoning effort level. If almost
 everything is at `high` or `xhigh`, working at a lower level for simple tasks saves money. «desconocido»
@@ -166,13 +183,13 @@ it works.
 **Bytes devueltos al contexto por herramienta** (bytes returned to the context per tool). What each tool
 returned to the context according to the telemetry, with approximate tokens.
 
-### Por hora (hourly, collapsed row)
+### Evolución por modelo (trend per model, collapsed row)
 
-**Tokens por modelo (por hora)** (tokens per model, hourly). Tokens per hour, stacked by model, in millions. To
-see at what times you work and with what.
+**Tokens por modelo** (tokens per model). Tokens stacked by model, in millions, with bars that follow the time
+range. With a day or a week it shows at what times you work and with what.
 
-**Coste por modelo y effort (por hora)** (cost per model and effort, hourly). Cost per hour by model and effort.
-Effort is only known for requests with telemetry; the rest shows as «sin telemetría» (no telemetry).
+**Coste por modelo y effort** (cost per model and effort). Cost by model and effort, with the same bars. Effort
+comes from the telemetry or the conversation; without either it shows as «desconocido» (unknown).
 
 ## OpenCode
 
@@ -263,3 +280,4 @@ weeks. If they rise, sessions are running too long or answers are not going wher
 | Am I going to run out of quota? | OpenCode → Cuota y uso por proveedor |
 | Did the rule I added work? | Errores evitables por herramienta, por semana |
 | Why is a cost 0 or missing? | Modelos sin precio → prices page |
+| Why is the dashboard empty? | Resumen IA → Estado de las fuentes |

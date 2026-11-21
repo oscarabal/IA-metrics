@@ -156,6 +156,11 @@ class Index:
         self.progress = (0, 0)     # (files read, files found) of the current read
         self.failed = set()        # files whose read raised: logged once, skipped until they change
         self.loki_ok = False
+        # Freshness, for the «Estado de las fuentes» panels: when the last read finished (seconds) and the
+        # time of the newest telemetry event read (ms)
+        self.scanned_at = 0
+        self.loki_checked_at = 0
+        self.loki_last_event_ms = 0
 
     # ---------------------------------------------------------------- conversation files
     def _session_for(self, path):
@@ -306,6 +311,7 @@ class Index:
                 except OSError:
                     pass
         self.progress = (len(paths), len(paths))
+        self.scanned_at = time.time()
         if not self.done:
             print("Lectura inicial de las conversaciones terminada: %d ficheros." % len(paths), flush=True)
         self.done = True
@@ -362,6 +368,9 @@ class Index:
                         pass
             self.loki_ns = max(self.loki_ns, last)
             self.loki_ok = True
+            self.loki_checked_at = time.time()
+            if count:
+                self.loki_last_event_ms = max(self.loki_last_event_ms, last // 1_000_000)
             if count < 5000:
                 return
             start = last + 1
@@ -419,6 +428,24 @@ class Index:
     def snapshot(self):
         with self.lock:
             return {sid: s for sid, s in self.sessions.items()}
+
+    def reprice(self):
+        """Price the messages that had none (computed cost None), e.g. after a new models.dev copy arrives.
+        Their usage extras (1-hour writes, fast mode, US-only) are not kept, so they are priced without them.
+        Returns how many got a price."""
+        n = 0
+        with self.lock:
+            for s in self.sessions.values():
+                for m in s["msgs"].values():
+                    if len(m) > 10 and m[10] is None and m[1] not in ("<synthetic>", "unknown", "", None):
+                        try:
+                            c = pricing.cost(m[1], m[0], m[2], m[3], m[4], m[5])
+                        except Exception:
+                            continue
+                        if c is not None:
+                            m[10] = c
+                            n += 1
+        return n
 
     def cost_of(self, msg):
         """Cost of a message: the telemetry's when it reported it, else the estimate from prices.json (ADR 0002)."""

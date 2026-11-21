@@ -14,6 +14,8 @@ Los motivos, alternativas y consecuencias están en cada ADR ([índice](../adr/R
 | Registro por petición en cada colector y API JSON `/data` para Grafana; series por día retiradas | [0002](../adr/0002-registro-por-peticion-y-api-de-datos.md) | [04](04-solution-strategy.md), [05](05-building-block-view.md), [06](06-runtime-view.md), [08](08-crosscutting-concepts.md) |
 | Estrategia de pruebas automáticas | [0004](../adr/0004-estrategia-de-pruebas.md) | [10](10-quality-requirements.md) |
 | Coste de OpenCode a precio de API cuando OpenCode guarda 0 | [0005](../adr/0005-coste-de-opencode-a-precio-de-api.md) | [05](05-building-block-view.md), [06](06-runtime-view.md), [08](08-crosscutting-concepts.md) |
+| models.dev como respaldo de los precios de Claude Code | [0006](../adr/0006-precios-de-claude-code-desde-models-dev.md) | [02](02-constraints.md), [03](03-context-and-scope.md), [05](05-building-block-view.md), [08](08-crosscutting-concepts.md) |
+| Tareas de la app de Claude con un colector propio (retirada: sin acceso de administrador para activar la telemetría) | [0007](../adr/0007-telemetria-de-la-app-de-claude.md) | — |
 
 Decisiones tomadas sin ADR propio, registradas en `CLAUDE.md` y en la auditoría de seguridad del
 20-11-2026: no publicar Prometheus ni Loki, healthchecks con `/health`, y no persistir el índice de Claude

@@ -96,7 +96,8 @@ flowchart TD
 | Effort | Solo con telemetría | También de la conversación (el 95 % de las respuestas lo traen) |
 | Prompts más caros | Loki, 30 días, y solo con `OTEL_LOG_USER_PROMPTS=1` | Conversaciones, sin límite de días |
 | Herramientas (bytes, duración) | Loki, 30 días | Conversaciones (`persistedOutputSize` y `durationMs` cuando existen) |
-| Fila «Por hora» | Contadores OTel | Registro agrupado por hora |
+| Evolución en el tiempo (fila «Evolución por modelo») | Contadores OTel, por hora | Registro con grupo adaptable al periodo (`group=auto`) |
+| Saber si los datos están al día | — | Fila «Estado de las fuentes» del Resumen IA |
 | Decisiones de permisos del informe | Loki | Telemetría o conversación (mismos valores) |
 | Sesiones con conversación borrada | Pierden su proyecto | Archivadas (solo metadatos) |
 
@@ -153,8 +154,6 @@ flowchart TD
 
 ## Pendiente
 
-- Unificar en `collectors/common/` el motor de reglas del informe (D1–D10), que sigue duplicado (las páginas
-  HTML y el formato del informe ya son comunes).
 - Medir cuánto suponen las llamadas que Claude Code no escribe en la conversación (lo único que aún se pierde
   con la pila parada).
-- Alertas (presupuesto, contexto casi lleno) y documentación arc42.
+- Alertas (presupuesto, contexto casi lleno).

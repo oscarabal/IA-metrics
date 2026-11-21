@@ -389,13 +389,13 @@
     },
     {
       "id": 5,
-      "title": "Coste diario por herramienta",
+      "title": "Coste por herramienta en el tiempo",
       "type": "timeseries",
       "datasource": {
         "type": "datasource",
         "uid": "-- Mixed --"
       },
-      "description": "Coste de cada día por herramienta, con todo el historial de ambas. Los días se cuentan en la zona horaria de los colectores (TZ, por defecto Europe/Madrid).",
+      "description": "Coste por herramienta a lo largo del periodo elegido, con todo el historial de ambas. El tamaño de cada barra se adapta al periodo (de 1 minuto con «últimos 15 minutos» a semanas con varios meses), en la zona horaria de los colectores (TZ, por defecto Europe/Madrid); pasa el ratón para ver el intervalo.",
       "gridPos": {
         "x": 0,
         "y": 5,
@@ -413,7 +413,7 @@
           "source": "url",
           "format": "table",
           "parser": "backend",
-          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&group=day&measures=cost",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&group=auto&measures=cost",
           "url_options": {
             "method": "GET",
             "data": ""
@@ -431,7 +431,7 @@
           "source": "url",
           "format": "table",
           "parser": "backend",
-          "url": "http://opencode-collector:9101/data/usage?from=${__from}&to=${__to}&group=day&measures=cost",
+          "url": "http://opencode-collector:9101/data/usage?from=${__from}&to=${__to}&group=auto&measures=cost",
           "url_options": {
             "method": "GET",
             "data": ""
@@ -452,7 +452,8 @@
               "group": "A"
             },
             "barAlignment": -1,
-            "lineWidth": 1
+            "lineWidth": 1,
+            "axisSoftMin": 0
           }
         },
         "overrides": [
@@ -511,7 +512,8 @@
           "id": "organize",
           "options": {
             "excludeByName": {
-              "day": true
+              "auto": true,
+              "interval": true
             }
           }
         },
@@ -906,6 +908,402 @@
       "options": {
         "mode": "markdown",
         "content": "El detalle está en el dashboard de cada herramienta: **[Claude Code](/d/claude-code)** (prompts, herramientas, effort, diagnóstico del coste) y **[OpenCode](/d/opencode-usage)** (agentes, cuotas, evolución semanal). Todo el coste es a precio de API (con suscripción no es lo que pagas): en Claude Code, el de su telemetría o, si no, el de la tabla de precios; en OpenCode, el que guarda OpenCode o, si guardó 0, tokens × precio de models.dev. Si solo instalaste una herramienta, los paneles de la otra muestran un aviso de conexión."
+      }
+    },
+    {
+      "id": 300,
+      "type": "row",
+      "title": "Estado de las fuentes",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 9,
+      "title": "Última actividad registrada",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Cuándo fue la última respuesta del modelo que ha visto cada fuente. Si acabas de usar la herramienta y aquí sale antiguo, sus datos no están llegando: mira «Retraso de lectura» y «Servicios». Con un periodo corto (15 minutos), un dashboard vacío con una actividad antigua aquí significa que no has usado la herramienta en ese tiempo.",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(claude_index_last_message_timestamp_seconds > 0) * 1000",
+          "instant": true,
+          "range": false,
+          "legendFormat": "Claude Code: conversaciones"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(claude_telemetry_last_event_timestamp_seconds > 0) * 1000",
+          "instant": true,
+          "range": false,
+          "legendFormat": "Claude Code: telemetría"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(opencode_last_message_timestamp_seconds > 0) * 1000",
+          "instant": true,
+          "range": false,
+          "legendFormat": "OpenCode"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow",
+          "decimals": 0,
+          "noValue": "sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 13,
+          "valueSize": 20
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 10,
+      "title": "Retraso de lectura",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Hace cuánto que cada colector leyó su fuente con éxito. Lo normal: menos de un minuto para las conversaciones y Loki, y menos de tres para opencode.db. En rojo (más de una hora), el colector no puede leer: revisa docker compose logs claude-collector u opencode-collector.",
+      "gridPos": {
+        "x": 6,
+        "y": 27,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(claude_index_last_scan_timestamp_seconds > 0)",
+          "instant": true,
+          "range": false,
+          "legendFormat": "Conversaciones de Claude Code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(claude_telemetry_last_check_timestamp_seconds > 0)",
+          "instant": true,
+          "range": false,
+          "legendFormat": "Telemetría (Loki)"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(opencode_db_read_timestamp_seconds > 0)",
+          "instant": true,
+          "range": false,
+          "legendFormat": "opencode.db"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "noValue": "sin leer",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 600
+              },
+              {
+                "color": "red",
+                "value": 3600
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 13,
+          "valueSize": 20
+        },
+        "colorMode": "background"
+      }
+    },
+    {
+      "id": 11,
+      "title": "Servicios",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Si Prometheus llega a cada servicio. Los de una herramienta que no instalaste salen como caídos: claude-collector, otel-collector y loki son de Claude Code; opencode, de OpenCode.",
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{job=~\"claude-collector|otel-collector|loki|opencode\"}",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "caído"
+                },
+                "1": {
+                  "text": "en marcha"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 13,
+          "valueSize": 20
+        },
+        "colorMode": "background"
+      }
+    },
+    {
+      "id": 12,
+      "title": "Telemetría de Claude Code en el periodo",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Lo que ha recibido el OTel Collector de Claude Code en el periodo y lo que ha guardado Loki. «Rechazados o no guardados» por encima de 0 significa eventos perdidos (el coste se recalcula con la tabla de precios, pero se pierden el effort y las llamadas que no se escriben en la conversación). Los contadores empiezan de cero al reiniciar el servicio.",
+      "gridPos": {
+        "x": 18,
+        "y": 27,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase({__name__=~\"otelcol_receiver_accepted_log_records(_total)?\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "Eventos recibidos"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase({__name__=~\"otelcol_receiver_accepted_metric_points(_total)?\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "Puntos de métricas recibidos"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase({__name__=~\"otelcol_receiver_refused_log_records|otelcol_exporter_send_failed_log_records(_total)?\"}[$__range])) or vector(0)",
+          "instant": true,
+          "range": false,
+          "legendFormat": "Rechazados o no guardados"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase({__name__=~\"loki_distributor_lines_received(_total)?\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "Líneas guardadas en Loki"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 13,
+          "valueSize": 20
+        },
+        "colorMode": "value"
       }
     }
   ],

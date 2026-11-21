@@ -40,7 +40,7 @@ Cada fila de `usage` lleva `cost` y `cost_source`, decididos en un único punto 
 
 | Herramienta | `telemetry` / `tool` | `computed` | `missing` |
 | --- | --- | --- | --- |
-| Claude Code (`index.hybrid_cost`) | Coste del evento de telemetría | Tokens × `prices.json` | Modelo sin precio |
+| Claude Code (`index.hybrid_cost`) | Coste del evento de telemetría | Tokens × `prices.json` o, si no está, × la copia de models.dev ([ADR 0006](../adr/0006-precios-de-claude-code-desde-models-dev.md)) | Modelo sin precio en ninguna |
 | OpenCode (`api_prices.hybrid`) | Coste que guardó OpenCode | Tokens × precio de `models.json` (proveedor o fabricante) | Sin precio en ningún sitio |
 
 El coste es siempre a precio de API, también con suscripción ([ADR 0002](../adr/0002-registro-por-peticion-y-api-de-datos.md),
@@ -76,8 +76,26 @@ y se guardan en caché; las peticiones HTTP copian lo calculado. El informe cach
 
 `tests/test_opencode.py` (`test_scrape_reads_no_database`).
 
+## Frescura de los datos y salud del canal
+
+### Mecanismo
+
+- Cada colector publica en `/metrics` cuándo vio la última actividad de su fuente y cuándo la leyó con éxito
+  (conversaciones y telemetría de Claude Code, `opencode.db`). Prometheus lee además las métricas internas del
+  OTel Collector (recibido, rechazado, no enviado a Loki) y de Loki (líneas guardadas).
+- La fila «Estado de las fuentes» del Resumen IA lo junta: distingue un periodo sin actividad de una fuente que no llega.
+- Los gráficos en el tiempo piden `group=auto`: el tamaño de grupo sigue al rango y ningún punto queda antes de su
+  inicio, así que un rango corto (15 minutos) no sale vacío si hay datos.
+
+### Evidencia
+
+`tests/test_claude.py` y `tests/test_opencode.py` (`test_source_freshness`), `tests/test_common.py` (`AutoBuckets`),
+`tests/test_config.py` (`test_telemetry_pipeline_observed`).
+
 ## Código común y contrato entre colectores
 
 Lo idéntico en los dos colectores vive en `collectors/common/`; `/data` tiene las mismas columnas en ambos
 (si se añade una, se añade en los dos), y el informe comparte reglas D1–D10 y formato JSON
-(`tests/test_contract.py`).
+(`tests/test_contract.py`). Cada colector escribe sus reglas sobre sus propios datos, pero el catálogo, los
+umbrales de D1–D10, la severidad y la forma de un hallazgo vienen de `common/coach_rules.py`, y un test
+comprueba que los dos informes lo usan.

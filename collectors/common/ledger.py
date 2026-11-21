@@ -16,7 +16,12 @@ Parameters
     nf.<field>    drop the rows whose <field> is one of the values given.
     group         dimensions to group by. "hour", "day", "week" and "month" bucket `ts` in the time
                   zone TZ (default Europe/Madrid) and also return `time`, the bucket's start in ms.
+                  "auto" picks the bucket from the time range (from/to): about `points` buckets (default
+                  40), from 1 minute to a month, aligned in TZ. It returns `auto` (the bucket's label),
+                  `interval` («15 min», «1 h», «día»...) and `time`, never earlier than `from`, so the
+                  first bucket of a short range still falls inside the chart.
                   Without `group` the answer is one row with the totals.
+    points        with group=auto, how many buckets to aim for (1-1000).
     measures      measures to return (default: all). `n` is always available: the number of rows.
     sort, limit   order by a returned field ("-" for descending) and cut the list.
     top           "<dimension>:<N>[:<measure>]": keep the N values of the dimension with the highest
@@ -50,7 +55,14 @@ try:
 except ImportError:  # pragma: no cover - Python < 3.9
     ZoneInfo = None
 
-TIME_GROUPS = ("hour", "day", "week", "month")
+TIME_GROUPS = ("hour", "day", "week", "month", "auto")
+# group=auto: bucket sizes to choose from (ms, unit or None for a fixed size, label for the panels)
+MINUTE, HOUR, DAY = 60_000, 3_600_000, 86_400_000
+AUTO_STEPS = ((MINUTE, None, "1 min"), (2 * MINUTE, None, "2 min"), (5 * MINUTE, None, "5 min"), (10 * MINUTE, None, "10 min"),
+              (15 * MINUTE, None, "15 min"), (30 * MINUTE, None, "30 min"), (HOUR, None, "1 h"), (2 * HOUR, None, "2 h"),
+              (3 * HOUR, None, "3 h"), (6 * HOUR, None, "6 h"), (12 * HOUR, None, "12 h"), (DAY, "day", "día"),
+              (7 * DAY, "week", "semana"), (30 * DAY, "month", "mes"))
+AUTO_POINTS = 40
 # Tool error classes that are not the model's fault (a permission rule, the user saying no, an
 # interruption): OpenCode's "avoidable_errors" leaves them out. Claude Code uses its own, wider set
 # (coach/errors.py NOT_AVOIDABLE), which adds classes only it has (plans, hooks, commands).
@@ -89,6 +101,23 @@ def bucket(ts_ms, unit, zone=None):
     else:
         raise ValueError(unit)
     return label, int(start.timestamp() * 1000)
+
+
+def auto_step(since, until, points=AUTO_POINTS):
+    """(ms, unit, label) of the smallest bucket that splits since..until into at most about `points` buckets."""
+    want = max(until - since, MINUTE) / max(points, 1)
+    return next((s for s in AUTO_STEPS if s[0] >= want), AUTO_STEPS[-1])
+
+
+def auto_bucket(ts_ms, step, zone=None):
+    """(label, start ms) of the group=auto bucket of `step` (from auto_step) that contains `ts_ms`."""
+    ms, unit, _label = step
+    if unit:
+        return bucket(ts_ms, unit, zone)
+    zone = zone or tz()
+    off = int(datetime.datetime.fromtimestamp(ts_ms / 1000, zone).utcoffset().total_seconds() * 1000)
+    start = (ts_ms + off) // ms * ms - off   # aligned in local time: 3-hour buckets start at 00:00, 03:00...
+    return datetime.datetime.fromtimestamp(start / 1000, zone).strftime("%Y-%m-%d %H:%M"), int(start)
 
 
 def _values(query, key):
@@ -223,6 +252,14 @@ def query(rows, q):
         keep_vals = {v for v, _t in sorted(totals.items(), key=lambda x: -x[1])[:n]}
         rename = {v: (v if v in keep_vals else other) for v in totals}
 
+    step = None
+    if "auto" in group:
+        stamps = [r.get("ts") or 0 for r in selected]
+        lo = since if since is not None else min(stamps, default=0)
+        hi = until if until is not None else max(stamps, default=lo)
+        points = _int(q, "points") or AUTO_POINTS
+        step = auto_step(lo, hi, min(max(points, 1), 1000))
+
     out, seen = {}, {}
     for r in selected:
         if top_dim is not None:
@@ -233,7 +270,13 @@ def query(rows, q):
         ts = r.get("ts") or 0
         key, extra = [], {}
         for g in group:
-            if g in TIME_GROUPS:
+            if g == "auto":
+                label, start = auto_bucket(ts, step, zone)
+                key.append(label)
+                # never before the range: the first bucket of a short range stays inside the chart
+                extra["auto"], extra["interval"] = label, step[2]
+                extra["time"] = max(start, since) if since is not None else start
+            elif g in TIME_GROUPS:
                 label, start = bucket(ts, g, zone)
                 key.append(label)
                 extra[g], extra["time"] = label, start

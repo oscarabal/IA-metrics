@@ -31,7 +31,8 @@ El **proyecto** de una sesión es la carpeta de trabajo (`cwd`) donde se abrió.
 ### Coste híbrido
 
 Para cada respuesta: el coste de la telemetría si Claude Code lo informó; si no, tokens × tabla de precios
-(`collectors/claude/prices.json`); si el modelo no tiene precio, queda marcado como `missing` y no suma.
+(`collectors/claude/prices.json`) o, si el modelo no está, con el precio de models.dev (copia diaria; ADR 0006);
+si no lo tiene ninguna, queda marcado como `missing` y no suma.
 La tabla reproduce el coste de la telemetría con un 0,0 % de desviación. La comprobación de que todos
 tus modelos tienen precio es automática: el colector la repite cada vez que lee conversaciones nuevas, el
 panel «Modelos sin precio» del Resumen se pone en rojo si falta alguno (lista en
@@ -73,7 +74,7 @@ por defecto).
 | Coste estimado · Tokens · USD por millón de tokens · Acierto de caché | Totales del periodo. El acierto de caché es la parte del input leída de caché. |
 | Modelos sin precio | Modelos de tus conversaciones que no están en `prices.json` (en rojo si hay alguno): su coste sin telemetría queda como `missing`. Al pulsarlo, o con el enlace «Precios de los modelos», se abre `http://localhost:9100/prices` con tus modelos (precio, uso, coste estimado) y la tabla de precios completa. |
 | Sesiones con actividad | Sesiones distintas con alguna respuesta en el periodo; enlace a la lista de sesiones. |
-| Evolución diaria | Coste y tokens de cada día. |
+| Evolución | Coste y tokens a lo largo del periodo; el tamaño de cada barra se adapta al rango (1 minuto con «últimos 15 minutos», días con un mes). |
 | Coste por effort · Coste por proyecto | Reparto del coste. El effort sale de la telemetría o de la conversación; «desconocido» si ninguna lo tiene. |
 
 ### Reparto del gasto
@@ -105,9 +106,14 @@ por defecto).
 | Coste por mensaje de cada modelo, por semana | Para ver si un cambio de modelo abarata. |
 | Bytes devueltos al contexto por herramienta | Las herramientas que más llenan el contexto. |
 
-### Por hora
+### Evolución por modelo
 
-Tokens por modelo y coste por modelo y effort, hora a hora.
+Tokens por modelo y coste por modelo y effort a lo largo del periodo, con barras que se adaptan al rango como
+«Evolución». Las tres gráficas piden a la API `group=auto`: la API elige el tamaño de grupo para unas 40 barras y
+nunca devuelve un punto anterior al inicio del rango, así que un periodo corto no queda vacío.
+
+¿Dashboard vacío con un periodo corto? Mira «Estado de las fuentes» en el Resumen IA: dice cuándo fue la última
+respuesta que se ha leído y si los colectores están leyendo.
 
 ## Páginas de sesión e informe de mejoras
 
@@ -145,6 +151,7 @@ archivada en `coach.db`.
 | `CLAUDE_CONTEXT_LIMIT_DEFAULT`, `CLAUDE_CONTEXT_LIMITS` | Límite de contexto supuesto y excepciones por modelo. |
 | `CLAUDE_PROMPT_TEXT` | `0` para que el colector no lea el texto de los prompts. |
 | `TZ` | Zona horaria de los días y las horas. |
+| `MODELS_DEV_URL` | Catálogo de precios de respaldo; vacío desactiva la descarga diaria de models.dev. |
 | `COACH_RETENTION_DAYS` | Días de historial que guarda `coach.db` (0, por defecto, lo guarda todo); se compacta una vez al día. |
 | `ALLOWED_HOSTS` | Nombres extra con los que abrir las páginas del colector. |
 

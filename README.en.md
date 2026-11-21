@@ -40,6 +40,14 @@ flowchart TD
 Unattended: `powershell -File installer\install.ps1 -Tools claude,opencode`
 (other options: `-NoStart`, `-SkipClaudeSettings`, `-SkipMigration`, `-NoShortcut`).
 
+**Update:** `Actualizar.bat` (or `install.ps1 -Update`) pulls the new code with `git pull` if the repository
+has no local changes, pulls the images and restarts the stack; history is kept.
+
+**Uninstall:** `Desinstalar.bat` (or `install.ps1 -Uninstall`) removes the containers, removes from
+`settings.json` the telemetry variables the installer added (after a backup) and the shortcut, and asks
+whether to delete the history too (`-RemoveData` deletes it without asking; `-Force` asks nothing). The
+project folder and `.env` stay.
+
 By hand: copy `.env.example` to `.env`, set `GRAFANA_ADMIN_PASSWORD` and `COMPOSE_PROFILES`
 (`claude`, `opencode` or `claude,opencode`) and run `docker compose up -d`.
 
@@ -49,7 +57,7 @@ The installer, the dashboards and the improvement report are in Spanish.
 
 | Address | What it is |
 | --- | --- |
-| http://localhost:3000 | Grafana (user `admin`). Home: **Resumen IA**, the spend of both tools |
+| http://localhost:3000 | Grafana (user `admin`). Home: **Resumen IA**, the spend of both tools and the source status (whether the data is up to date) |
 | http://localhost:3000/d/claude-code | Claude Code dashboard — [guide (es)](docs/claude-code.md) |
 | http://localhost:3000/d/opencode-usage | OpenCode dashboard — [guide (es)](docs/opencode.md) |
 | http://localhost:9100/sessions · `/report` · `/prices` | Claude Code sessions, improvement report and model prices |
@@ -128,13 +136,18 @@ flowchart TD
     TEL -- yes --> CT["Telemetry cost<br/>cost_source = telemetry"]
     TEL -- "no: stack stopped, telemetry<br/>off, old session" --> P{"Is the model<br/>in prices.json?"}
     P -- yes --> CP["Tokens × price table<br/>cost_source = computed"]
-    P -- no --> CM["No cost, flagged<br/>cost_source = missing"]
+    P -- no --> PD{"Is it in<br/>models.dev?"}
+    PD -- yes --> CD["Tokens × models.dev price<br/>cost_source = computed"]
+    PD -- no --> CM["No cost, flagged<br/>cost_source = missing"]
 ```
 
 The price table (`collectors/claude/prices.json`) has a start date for each price, tiers by prompt size,
 5-minute and 1-hour cache writes, fast mode, US-only inference and web searches. Against the telemetry it
 shows **0.0 % deviation** on the models tested. To see where each cost comes from:
-`http://localhost:9100/data/usage?group=cost_source`.
+`http://localhost:9100/data/usage?group=cost_source`. For a model not in the table yet, the
+collector uses the models.dev price: it downloads its public catalogue once a day (`MODELS_DEV_URL`; empty turns
+it off) and also applies it to the messages already read. That price has no periods, fast mode or US-only
+surcharge, so `prices.json` still wins.
 
 In OpenCode the price comes from its models.dev cache (`models.json`): the provider's own or, when it gives
 none (like GitHub Copilot), the model maker's, matched by name (`github-copilot/claude-opus-4.6` →
@@ -146,7 +159,8 @@ models have a price. The «Modelos sin precio» panel of each dashboard turns re
 `Iniciar-metricas.bat` warns at startup and the «Precios de los modelos» link (or clicking the panel) opens
 `/prices` in a new tab: each model with its price, where it comes from, usage and cost. `/prices/missing`
 gives the list as text. In Claude Code, add the model to `prices.json` (prices from the
-[official page](https://platform.claude.com/docs/en/about-claude/pricing)) and restart `claude-collector`;
+[official page](https://platform.claude.com/docs/en/about-claude/pricing)) and restart `claude-collector`
+(only needed if models.dev does not have it either);
 in OpenCode, set its `cost` in OpenCode's configuration.
 
 ### What happens if the stack is stopped
@@ -190,7 +204,7 @@ GET http://localhost:9101/data/usage?group=day,model&from=<ms>&to=<ms>&project=d
 | `compactions` | context compactions | both |
 | `interrupts`, `commands` | interrupted answers; cost of the turns of each command | Claude Code |
 
-Parameters: `from`/`to` (ms), `project`, `group` (columns and `hour`/`day`/`week`/`month`), `measures`,
+Parameters: `from`/`to` (ms), `project`, `group` (columns and `hour`/`day`/`week`/`month`, or `auto`: the bucket size from the range, about 40 bars), `measures`,
 `f.<field>`/`nf.<field>` (filters), `calc` (e.g. `share:cost/total_cost`), `top=model:10&other=otros`,
 `distinct=session`, `mask=prompt`, `sort`, `limit`. Details in `collectors/common/ledger.py`.
 
@@ -200,6 +214,8 @@ Parameters: `from`/`to` (ms), `project`, `group` (columns and `hour`/`day`/`week
 docker-compose.yml          services and profiles
 .env.example                variables (written by the installer)
 Instalar.bat                installer (installer/install.ps1)
+Actualizar.bat              updates code, images and stack (install.ps1 -Update)
+Desinstalar.bat             uninstalls (install.ps1 -Uninstall)
 Iniciar-metricas.bat        starts the stack, opens Grafana and warns if a model has no price
 docker-compose.debug.yml    publishes Prometheus, Loki and the collector on 127.0.0.1 while debugging
 collectors/common/          data API, Host header check and report page, shared
@@ -245,6 +261,9 @@ docker compose exec opencode-collector python /srv/opencode/coach/cli.py report 
 - **Claude Code telemetry.** Only the cost, tool result and permission decision events are used. If
   `settings.json` has `OTEL_LOG_USER_PROMPTS=1`, your prompt text is stored in Loki for 30 days with nothing
   using it: you can remove it.
+- **Internet access.** The only things the stack fetches from outside are models.dev's public price
+  catalogue (once a day, sending no data) and the Infinity plugin on Grafana's first start.
+  `MODELS_DEV_URL=` in `.env` turns the models.dev download off.
 - **Network.** Only Grafana, the two collectors and the telemetry's 4317 are published, all on `127.0.0.1`.
   Prometheus, Loki and the rest of the collector have no authentication and do not check the `Host` header,
   so they are not published (except with `docker-compose.debug.yml`). The collectors reject requests with an
@@ -270,9 +289,12 @@ docker compose exec opencode-collector python /srv/opencode/coach/cli.py report 
 
 ## Next steps
 
-- Unify the report's rule engine (D1–D10) in `collectors/common/` (the HTML pages and the report's
-  formatting already live there).
-- Alerts (budget, context nearly full).
+- Alerts (budget, no new data, models without a price).
+- API reliability: 429/529 errors and latency per model (reading `api_error` and each request's duration).
+- Decide about the OTel productivity counters (lines, commits, PRs, active time): use them or stop collecting them.
+
+Already done on this track: charts that follow the time range (`group=auto`, useful on short ranges) and the
+**Estado de las fuentes** (source status) row of Resumen IA (whether each source is up to date and the telemetry arrives).
 
 Architecture (arc42, in Spanish): [docs/architecture](docs/architecture/README.md). Decisions (in Spanish): [docs/adr](docs/adr/README.md).
 

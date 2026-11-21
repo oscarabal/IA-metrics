@@ -24,8 +24,11 @@ t.warm()
 srv = helpers.Server(t.exporter.Handler if %(name)r == "opencode" else t.collector.Handler)
 r = srv.json("/report.json")
 from coach import report as coach_report
+from common import coach_rules
 print(json.dumps({"keys": sorted(r), "summary": sorted(r["summary"]), "version": r["format_version"],
-                  "rules": sorted(coach_report.RULES), "names": coach_report.RULES}))
+                  "rules": sorted(coach_report.RULES), "names": coach_report.RULES,
+                  "shared_code": coach_report.severity is coach_rules.severity and coach_report._finding is coach_rules.finding
+                                 and coach_report.R is coach_rules}))
 """
 
 
@@ -40,6 +43,11 @@ class ReportContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.cc, cls.oc = report_of("claude"), report_of("opencode")
+
+    def test_rules_share_code_and_thresholds(self):
+        """Both reports take severity, finding shape and every D1–D10 threshold from common/coach_rules.py."""
+        self.assertTrue(self.cc["shared_code"])
+        self.assertTrue(self.oc["shared_code"])
 
     def test_same_version(self):
         self.assertEqual(self.cc["version"], self.oc["version"])

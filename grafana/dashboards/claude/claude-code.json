@@ -380,7 +380,7 @@
     },
     {
       "id": 7,
-      "title": "Evolución diaria",
+      "title": "Evolución",
       "type": "timeseries",
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -403,7 +403,7 @@
           "source": "url",
           "format": "table",
           "parser": "backend",
-          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=day&measures=cost,tokens&calc=tokens_m:tokens/1000000",
+          "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=auto&measures=cost,tokens&calc=tokens_m:tokens/1000000",
           "url_options": {
             "method": "GET",
             "data": ""
@@ -421,7 +421,8 @@
             "lineWidth": 1,
             "barWidthFactor": 0.7,
             "showPoints": "never",
-            "axisPlacement": "auto"
+            "axisPlacement": "auto",
+            "axisSoftMin": 0
           }
         },
         "overrides": [
@@ -503,14 +504,15 @@
           "sort": "none"
         }
       },
-      "description": "Coste (barras, eje izquierdo) y tokens en millones (línea, eje derecho) de cada día del periodo elegido.",
+      "description": "Coste (barras, eje izquierdo) y tokens en millones (línea, eje derecho) del periodo elegido. El tamaño de cada barra se adapta al periodo elegido (de 1 minuto con «últimos 15 minutos» a semanas con varios meses), en la zona horaria del colector; pasa el ratón para ver el intervalo.",
       "transformations": [
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "day": true,
-              "tokens": true
+              "tokens": true,
+              "auto": true,
+              "interval": true
             },
             "renameByName": {
               "cost": "Coste",
@@ -2896,7 +2898,7 @@
     },
     {
       "type": "row",
-      "title": "Por hora",
+      "title": "Evolución por modelo",
       "collapsed": true,
       "gridPos": {
         "x": 0,
@@ -2909,7 +2911,7 @@
         {
           "id": 20,
           "type": "timeseries",
-          "title": "Tokens por modelo (por hora)",
+          "title": "Tokens por modelo",
           "gridPos": {
             "x": 0,
             "y": 121,
@@ -2930,9 +2932,11 @@
                 },
                 "fillOpacity": 70,
                 "lineWidth": 1,
-                "showPoints": "never"
+                "showPoints": "never",
+                "axisSoftMin": 0
               },
-              "decimals": 1
+              "decimals": 1,
+              "displayName": "${__field.labels.model}"
             },
             "overrides": []
           },
@@ -2947,7 +2951,7 @@
               "source": "url",
               "format": "table",
               "parser": "backend",
-              "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=hour,model&measures=tokens&calc=tokens_m:tokens/1000000",
+              "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=auto,model&measures=tokens&calc=tokens_m:tokens/1000000",
               "url_options": {
                 "method": "GET",
                 "data": ""
@@ -2956,7 +2960,7 @@
               "columns": []
             }
           ],
-          "description": "Tokens de cada hora (en la zona horaria del colector), separados por modelo, en millones.",
+          "description": "Tokens separados por modelo, en millones. El tamaño de cada barra se adapta al periodo elegido (de 1 minuto con «últimos 15 minutos» a semanas con varios meses), en la zona horaria del colector; pasa el ratón para ver el intervalo.",
           "options": {
             "legend": {
               "displayMode": "list",
@@ -2969,18 +2973,12 @@
           },
           "transformations": [
             {
-              "id": "groupingToMatrix",
-              "options": {
-                "columnField": "model",
-                "rowField": "hour",
-                "valueField": "tokens_m"
-              }
-            },
-            {
               "id": "organize",
               "options": {
-                "renameByName": {
-                  "hour\\model": "Hora"
+                "excludeByName": {
+                  "auto": true,
+                  "interval": true,
+                  "tokens": true
                 }
               }
             },
@@ -2989,9 +2987,8 @@
               "options": {
                 "conversions": [
                   {
-                    "targetField": "Hora",
-                    "destinationType": "time",
-                    "dateFormat": "YYYY-MM-DD HH:mm"
+                    "targetField": "time",
+                    "destinationType": "time"
                   }
                 ]
               }
@@ -3001,9 +2998,15 @@
               "options": {
                 "sort": [
                   {
-                    "field": "Hora"
+                    "field": "time"
                   }
                 ]
+              }
+            },
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
               }
             }
           ]
@@ -3011,7 +3014,7 @@
         {
           "id": 21,
           "type": "timeseries",
-          "title": "Coste por modelo y effort (por hora)",
+          "title": "Coste por modelo y effort",
           "gridPos": {
             "x": 12,
             "y": 121,
@@ -3032,8 +3035,10 @@
                 },
                 "fillOpacity": 70,
                 "lineWidth": 1,
-                "showPoints": "never"
-              }
+                "showPoints": "never",
+                "axisSoftMin": 0
+              },
+              "displayName": "${__field.labels.model_effort}"
             },
             "overrides": []
           },
@@ -3048,7 +3053,7 @@
               "source": "url",
               "format": "table",
               "parser": "backend",
-              "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=hour,model_effort&measures=cost",
+              "url": "http://claude-collector:9100/data/usage?from=${__from}&to=${__to}&${project:queryparam}&${sessions:queryparam}&group=auto,model_effort&measures=cost",
               "url_options": {
                 "method": "GET",
                 "data": ""
@@ -3057,7 +3062,7 @@
               "columns": []
             }
           ],
-          "description": "Coste de cada hora separado por modelo y nivel de esfuerzo. El effort solo se conoce en las peticiones que informó la telemetría; el resto aparece como «sin telemetría».",
+          "description": "Coste separado por modelo y nivel de esfuerzo. El effort sale de la telemetría o, si falta, de la conversación; sin ninguno aparece como «desconocido». El tamaño de cada barra se adapta al periodo elegido (de 1 minuto con «últimos 15 minutos» a semanas con varios meses), en la zona horaria del colector; pasa el ratón para ver el intervalo.",
           "options": {
             "legend": {
               "displayMode": "list",
@@ -3070,18 +3075,11 @@
           },
           "transformations": [
             {
-              "id": "groupingToMatrix",
-              "options": {
-                "columnField": "model_effort",
-                "rowField": "hour",
-                "valueField": "cost"
-              }
-            },
-            {
               "id": "organize",
               "options": {
-                "renameByName": {
-                  "hour\\model_effort": "Hora"
+                "excludeByName": {
+                  "auto": true,
+                  "interval": true
                 }
               }
             },
@@ -3090,9 +3088,8 @@
               "options": {
                 "conversions": [
                   {
-                    "targetField": "Hora",
-                    "destinationType": "time",
-                    "dateFormat": "YYYY-MM-DD HH:mm"
+                    "targetField": "time",
+                    "destinationType": "time"
                   }
                 ]
               }
@@ -3102,9 +3099,15 @@
               "options": {
                 "sort": [
                   {
-                    "field": "Hora"
+                    "field": "time"
                   }
                 ]
+              }
+            },
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
               }
             }
           ]

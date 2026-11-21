@@ -123,6 +123,10 @@ services:
       - CONTEXT_SESSIONS=${CLAUDE_CONTEXT_SESSIONS:-30}
       - PROJECT_ROOTS=${PROJECT_ROOTS:-}
       - COACH_DB=/state/coach.db
+      # Precios de respaldo para los modelos que no están en prices.json: copia diaria de models.dev en /state.
+      # Vacío (MODELS_DEV_URL=) la desactiva y la pila no hace ninguna petición fuera del equipo.
+      - MODELS_DEV_URL=${MODELS_DEV_URL-https://models.dev/api.json}
+      - MODELS_DEV_FILE=/state/models-dev.json
       # Días de historial que guarda coach.db (0 = todo); se compacta una vez al día
       - COACH_RETENTION_DAYS=${COACH_RETENTION_DAYS:-0}
       - DASHBOARD_URL=http://localhost:3000/d/claude-code

@@ -40,6 +40,14 @@ flowchart TD
 Sin preguntas: `powershell -File installer\install.ps1 -Tools claude,opencode`
 (otras opciones: `-NoStart`, `-SkipClaudeSettings`, `-SkipMigration`, `-NoShortcut`).
 
+**Actualizar:** `Actualizar.bat` (o `install.ps1 -Update`) descarga el código nuevo con `git pull` si el
+repositorio no tiene cambios locales, descarga las imágenes y reinicia la pila; el historial se conserva.
+
+**Desinstalar:** `Desinstalar.bat` (o `install.ps1 -Uninstall`) elimina los contenedores, quita de
+`settings.json` las variables de telemetría que puso el instalador (con copia previa) y el acceso directo, y
+pregunta si borrar también el historial (`-RemoveData` lo borra sin preguntar; `-Force` no pregunta nada). La
+carpeta del proyecto y `.env` se quedan.
+
 A mano: copia `.env.example` a `.env`, define `GRAFANA_ADMIN_PASSWORD` y `COMPOSE_PROFILES`
 (`claude`, `opencode` o `claude,opencode`) y ejecuta `docker compose up -d`.
 
@@ -47,7 +55,7 @@ A mano: copia `.env.example` a `.env`, define `GRAFANA_ADMIN_PASSWORD` y `COMPOS
 
 | Dirección | Qué es |
 | --- | --- |
-| http://localhost:3000 | Grafana (usuario `admin`). Inicio: **Resumen IA**, el gasto de las dos herramientas |
+| http://localhost:3000 | Grafana (usuario `admin`). Inicio: **Resumen IA**, el gasto de las dos herramientas y el estado de las fuentes (si los datos están al día) |
 | http://localhost:3000/d/claude-code | Dashboard de Claude Code — [guía](docs/claude-code.md) |
 | http://localhost:3000/d/opencode-usage | Dashboard de OpenCode — [guía](docs/opencode.md) |
 | http://localhost:9100/sessions · `/report` · `/prices` | Sesiones, informe de mejoras y precios de los modelos de Claude Code |
@@ -126,13 +134,18 @@ flowchart TD
     TEL -- sí --> CT["Coste de la telemetría<br/>cost_source = telemetry"]
     TEL -- "no: pila parada, telemetría<br/>desactivada, sesión antigua" --> P{"¿El modelo está<br/>en prices.json?"}
     P -- sí --> CP["Tokens × tabla de precios<br/>cost_source = computed"]
-    P -- no --> CM["Sin coste, marcado<br/>cost_source = missing"]
+    P -- no --> PD{"¿Está en<br/>models.dev?"}
+    PD -- sí --> CD["Tokens × precio de models.dev<br/>cost_source = computed"]
+    PD -- no --> CM["Sin coste, marcado<br/>cost_source = missing"]
 ```
 
 La tabla de precios (`collectors/claude/prices.json`) tiene fecha de inicio para cada precio, tramos por
 tamaño de prompt, escrituras de caché de 5 min y 1 h, modo rápido, inferencia en EE. UU. y búsquedas web.
 Frente a la telemetría da **0,0 % de desviación** en los modelos probados. Para ver de dónde sale cada coste:
-`http://localhost:9100/data/usage?group=cost_source`.
+`http://localhost:9100/data/usage?group=cost_source`. Para un modelo que aún no está en la tabla, el colector
+usa el precio de models.dev: descarga una vez al día su catálogo público (`MODELS_DEV_URL`; vacío lo
+desactiva) y aplica ese precio también a los mensajes que ya había leído. Ese precio no tiene periodos ni modo
+rápido ni recargo de EE. UU., así que `prices.json` sigue mandando ([ADR 0006](docs/adr/0006-precios-de-claude-code-desde-models-dev.md)).
 
 En OpenCode el precio sale de su caché de models.dev (`models.json`): el del propio proveedor o, si no lo da
 (como GitHub Copilot), el del fabricante del modelo, buscado por nombre (`github-copilot/claude-opus-4.6` →
@@ -143,7 +156,7 @@ OpenCode sigue usando el coste que guarda OpenCode.
 tienen precio. El panel «Modelos sin precio» de cada dashboard se pone en rojo si falta alguno,
 `Iniciar-metricas.bat` lo avisa al arrancar y el enlace «Precios de los modelos» (o pulsar el panel) abre
 `/prices` en una pestaña nueva: cada modelo con su precio, de dónde sale, uso y coste. `/prices/missing` da
-la lista en texto. En Claude Code se arregla añadiendo el modelo a `prices.json` (precios de la
+la lista en texto. En Claude Code (si tampoco está en models.dev) se arregla añadiendo el modelo a `prices.json` (precios de la
 [página oficial](https://platform.claude.com/docs/en/about-claude/pricing)) y reiniciando `claude-collector`;
 en OpenCode, dando su `cost` en la configuración de OpenCode.
 
@@ -188,7 +201,7 @@ GET http://localhost:9101/data/usage?group=day,model&from=<ms>&to=<ms>&project=d
 | `compactions` | compactaciones de contexto | ambas |
 | `interrupts`, `commands` | respuestas interrumpidas; coste de los turnos de cada comando | Claude Code |
 
-Parámetros: `from`/`to` (ms), `project`, `group` (columnas y `hour`/`day`/`week`/`month`), `measures`,
+Parámetros: `from`/`to` (ms), `project`, `group` (columnas y `hour`/`day`/`week`/`month`, o `auto`: el tamaño de grupo según el rango, unas 40 barras), `measures`,
 `f.<campo>`/`nf.<campo>` (filtros), `calc` (p. ej. `share:cost/total_cost`), `top=model:10&other=otros`,
 `distinct=session`, `mask=prompt`, `sort`, `limit`. Detalle en `collectors/common/ledger.py`.
 
@@ -198,6 +211,8 @@ Parámetros: `from`/`to` (ms), `project`, `group` (columnas y `hour`/`day`/`week
 docker-compose.yml          servicios y perfiles
 .env.example                variables (las escribe el instalador)
 Instalar.bat                instalador (installer/install.ps1)
+Actualizar.bat              actualiza código, imágenes y pila (install.ps1 -Update)
+Desinstalar.bat             desinstala (install.ps1 -Uninstall)
 Iniciar-metricas.bat        arranca la pila, abre Grafana y avisa si algún modelo no tiene precio
 docker-compose.debug.yml    publica Prometheus, Loki y el collector en 127.0.0.1 mientras depuras
 collectors/common/          API de datos, cabecera Host y página del informe, compartidos
@@ -243,6 +258,9 @@ docker compose exec opencode-collector python /srv/opencode/coach/cli.py report 
 - **Telemetría de Claude Code.** Solo se usan los eventos de coste, resultados de herramientas y decisiones
   de permisos. Si en `settings.json` tienes `OTEL_LOG_USER_PROMPTS=1`, el texto de tus prompts se guarda en
   Loki 30 días sin que nada lo use: puedes quitarla.
+- **Salida a internet.** Lo único que la pila pide fuera del equipo es el catálogo público de precios de
+  models.dev (una vez al día, sin enviar datos) y el plugin Infinity en el primer arranque de Grafana.
+  `MODELS_DEV_URL=` en `.env` quita la descarga de models.dev.
 - **Red.** Solo se publican Grafana, los dos colectores y el 4317 de la telemetría, todos en `127.0.0.1`.
   Prometheus, Loki y el resto del collector no tienen autenticación ni comprueban la cabecera `Host`, así
   que no se publican (salvo con `docker-compose.debug.yml`). Los colectores rechazan peticiones con una
@@ -267,9 +285,12 @@ docker compose exec opencode-collector python /srv/opencode/coach/cli.py report 
 
 ## Próximos pasos
 
-- Unificar el motor de reglas del informe (D1–D10) en `collectors/common/` (las páginas HTML y el formato
-  del informe ya están ahí).
-- Alertas (presupuesto, contexto casi lleno).
+- Alertas (presupuesto, sin datos nuevos, modelos sin precio).
+- Fiabilidad de la API: errores 429/529 y latencia por modelo (leyendo `api_error` y la duración de cada petición).
+- Decidir sobre los contadores OTel de productividad (líneas, commits, PR, tiempo activo): usarlos o dejar de recogerlos.
+
+Ya resuelto en esta línea: gráficos que se adaptan al periodo (`group=auto`, útiles con rangos cortos) y la fila
+**Estado de las fuentes** del Resumen IA (si cada fuente está al día y si llega la telemetría).
 
 Arquitectura (arc42): [docs/architecture](docs/architecture/README.md). Decisiones: [docs/adr](docs/adr/README.md).
 

@@ -18,7 +18,7 @@ SERIES_EVERY = 120             # seconds between two readings of the database fo
 # Everything is computed in the exporter's background thread and cached here: a scrape only
 # copies text, so it costs no more than before this module existed. On a Windows bind mount
 # the extra database reads made scrapes pass Prometheus' 10 s timeout.
-_state = {"series_updated": 0, "loaded": None, "loaded_at": 0}
+_state = {"series_updated": 0, "loaded": None, "loaded_at": 0, "newest_ms": 0}
 _lock = threading.Lock()
 _wake = threading.Event()   # set by a findings panel that finds the data old, to read it again sooner
 
@@ -31,8 +31,9 @@ def refresh(conn, helpers, force=False):
         return
     read_at = time.time()
     loaded = report.load(conn, helpers, refresh=False)  # the thread has just refreshed the index
+    newest = max((m.time or 0 for m in loaded[0]), default=0)   # newest message, for «Estado de las fuentes»
     with _lock:
-        _state.update(series_updated=time.time(), loaded=loaded, loaded_at=read_at)
+        _state.update(series_updated=time.time(), loaded=loaded, loaded_at=read_at, newest_ms=newest)
 
 
 def snapshot():
@@ -56,11 +57,16 @@ def wait(seconds):
 def lines(*_ignored):
     """What a scrape publishes. Reads nothing from the database."""
     with _lock:
-        s_upd = _state["series_updated"]
+        s_upd, read_at, newest = _state["series_updated"], _state["loaded_at"], _state["newest_ms"]
     out = []
     add = out.append
     add("# TYPE coach_index_ready gauge")
     add("coach_index_ready %d" % (1 if INDEX.ready else 0))
     add("# TYPE coach_series_updated_timestamp_seconds gauge")
     add("coach_series_updated_timestamp_seconds %s" % round(s_upd))
+    # Freshness of the source («Estado de las fuentes»): newest message in opencode.db and when it was read
+    add("# TYPE opencode_last_message_timestamp_seconds gauge")
+    add("opencode_last_message_timestamp_seconds %d" % (newest // 1000))
+    add("# TYPE opencode_db_read_timestamp_seconds gauge")
+    add("opencode_db_read_timestamp_seconds %d" % read_at)
     return out

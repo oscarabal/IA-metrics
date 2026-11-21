@@ -147,13 +147,17 @@ def render_prices(used, table_rows, source, dashboard_url, pending):
             return '<span class="tag ok">sí</span>'
         return '<span class="tag bad">SIN PRECIO</span>' if not priced else '<span class="tag bad">parcial</span>'
 
-    mine = [[e(m), state(n, pr), str(n), kilo(tok), usd(cost)] + prices(p) + [when(first), when(last)]
+    def source(p):
+        return "—" if not p else ("models.dev" if p.get("source") == "models.dev" else "prices.json")
+
+    mine = [[e(m), state(n, pr), str(n), kilo(tok), usd(cost)] + prices(p) + [source(p), when(first), when(last)]
             for m, n, tok, pr, cost, first, last, p in used]
     allp = [[e(m), e(p.get("from", "")) + (' <span class="sub">(%d periodos)</span>' % k if k > 1 else "")] + prices(p)
             + ["sí" if p.get("fast") else "", "×%g" % p["geo_us"] if p.get("geo_us") else "",
                "sí" if p.get("tiers") else ""] for m, p, k in table_rows]
     flagged = {k for k, (_m, n, _t, pr, *_r) in enumerate(used) if pr < n}
-    banner = ('<div class="card bad"><b>%d modelos sin precio</b> (resaltados en la tabla): su coste sin telemetría queda como «missing». '
+    banner = ('<div class="card bad"><b>%d modelos sin precio</b> (resaltados en la tabla): no están en prices.json ni en models.dev, '
+              'así que su coste sin telemetría queda como «missing». '
               'Añádelos a <code>collectors/claude/prices.json</code> y ejecuta <code>docker compose restart claude-collector</code>.</div>'
               % len(flagged)) if flagged else ""
     if pending:
@@ -170,10 +174,11 @@ def render_prices(used, table_rows, source, dashboard_url, pending):
             "<h2>Tabla de precios (prices.json)</h2>%s"
             "<p class='note'>«Desde» es la fecha del precio vigente; un cambio de precio se añade como un periodo nuevo, sin borrar el anterior. "
             "Los modelos se reconocen por prefijo, sin la fecha ni [1m]. Rápido: tiene precio de modo rápido. EE. UU.: multiplicador de inference_geo=us. "
-            "Tramos: precio distinto según el tamaño del prompt.</p><script>%s</script></div></body></html>"
+            "Tramos: precio distinto según el tamaño del prompt. «Precio de»: prices.json o, para los modelos que no están en ella, la copia de "
+            "models.dev que el colector descarga cada día (sin periodos, modo rápido ni recargo de EE. UU.; prices.json manda).</p><script>%s</script></div></body></html>"
             % (CSS, PRICE_CSS, e(dashboard_url), e(source), banner,
-               price_table(["Modelo", "Precio", "Mensajes", "Tokens", "Coste estimado"] + price_heads + ["Primer uso", "Último uso"], mine,
-                           numeric=range(2, 12), flagged=flagged),
+               price_table(["Modelo", "Precio", "Mensajes", "Tokens", "Coste estimado"] + price_heads + ["Precio de", "Primer uso", "Último uso"], mine,
+                           numeric=(2, 3, 4, 5, 6, 7, 8, 9, 11, 12), flagged=flagged),   # «Precio de» (10) is text
                usd(total),
                price_table(["Modelo", "Desde"] + price_heads + ["Rápido", "EE. UU.", "Tramos"], allp, numeric=range(2, 7)),
                DATE_JS))

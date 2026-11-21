@@ -2,7 +2,9 @@
 
 Used only when Claude Code's telemetry did not report the request's cost (the stack was down, the
 telemetry was off, or the request is older than the telemetry). The table is prices.json; see its
-_doc for the rules. A model that is not in the table gives None ("missing"), never 0.
+_doc for the rules. A model that is not in the table is looked up in a copy of models.dev
+(MODELS_DEV_FILE, downloaded by map.py): its price there has no periods, fast mode or US-only
+multiplier, so prices.json stays the main source. Without either it gives None ("missing"), never 0.
 
 Usage fields read from a conversation file's `message.usage` (all optional):
     input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens,
@@ -16,8 +18,12 @@ import os
 import re
 
 PRICES_FILE = os.environ.get("CLAUDE_PRICES", os.path.join(os.path.dirname(os.path.abspath(__file__)), "prices.json"))
+MODELS_DEV_FILE = os.environ.get("MODELS_DEV_FILE", "/state/models-dev.json")
+# Providers whose models.dev price is used for a Claude model, in this order (the maker first)
+DEV_PROVIDERS = ("anthropic", "amazon-bedrock", "google-vertex-anthropic", "openrouter")
 _DATE = re.compile(r"-\d{8}$")
 _table = {"mtime": None, "data": None}
+_dev = {"mtime": None, "data": {}}
 
 
 def table():
@@ -38,13 +44,53 @@ def normalise(model):
     return _DATE.sub("", m)
 
 
+def _dev_period(cost):
+    """A prices.json-like period from a models.dev cost (USD per million). Missing cache prices follow
+    Anthropic's multipliers: reads 0.1 × input, 5-minute writes 1.25 ×, 1-hour writes 2 ×."""
+    inp = float(cost.get("input") or 0)
+    p = {"from": "", "source": "models.dev", "input": inp, "output": float(cost.get("output") or 0),
+         "cache_read": float(cost["cache_read"]) if cost.get("cache_read") is not None else inp * 0.1,
+         "cache_write_5m": float(cost["cache_write"]) if cost.get("cache_write") is not None else inp * 1.25,
+         "cache_write_1h": inp * 2}
+    over = cost.get("context_over_200k")
+    if isinstance(over, dict) and over.get("input"):
+        oi = float(over["input"])
+        p["tiers"] = [{"over": 200000, "input": oi, "output": float(over.get("output") or p["output"]),
+                       "cache_read": float(over.get("cache_read") or oi * 0.1),
+                       "cache_write_5m": float(over.get("cache_write") or oi * 1.25), "cache_write_1h": oi * 2}]
+    return p
+
+
+def dev_prices():
+    """normalised model id -> period, from the models.dev copy; {} when there is none. Reloaded when it changes."""
+    try:
+        mtime = os.path.getmtime(MODELS_DEV_FILE)
+    except OSError:
+        return {}
+    if _dev["mtime"] != mtime:
+        data = {}
+        try:
+            with open(MODELS_DEV_FILE, encoding="utf-8") as f:
+                raw = json.load(f)
+            order = {p: i for i, p in enumerate(DEV_PROVIDERS)}
+            for prov in sorted((p for p in raw if p in order), key=order.get):
+                for mid, mdata in ((raw[prov] or {}).get("models") or {}).items():
+                    cost = (mdata or {}).get("cost")
+                    if isinstance(cost, dict) and (cost.get("input") or 0) > 0:
+                        data.setdefault(normalise(mid).replace(".", "-"), _dev_period(cost))
+        except (OSError, ValueError, TypeError, AttributeError):
+            data = {}
+        _dev.update(mtime=mtime, data=data)
+    return _dev["data"]
+
+
 def period_for(model, ts_ms):
-    """The price period of a model at a time, or None if the model is not in the table."""
+    """The price period of a model at a time: prices.json, else models.dev, else None."""
     models = table()["models"]
     name = normalise(model)
     keys = [k for k in models if name == k or name.startswith(k + "-")]
     if not keys:
-        return None
+        return dev_prices().get(name.replace(".", "-"))
     periods = models[max(keys, key=len)]
     day = datetime.datetime.fromtimestamp((ts_ms or 0) / 1000, datetime.timezone.utc).strftime("%Y-%m-%d")
     chosen = None

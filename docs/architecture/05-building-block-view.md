@@ -48,13 +48,13 @@ contrato de datos ([ADR 0001](../adr/0001-pila-unica-docker-compose-con-perfiles
 
 | Bloque | Responsabilidad | Interfaces | Código o configuración |
 | --- | --- | --- | --- |
-| otel-collector | Recibir la telemetría de Claude Code y repartirla | OTLP 4317/4318; `:8889/metrics`; OTLP HTTP a Loki | `config/otel-collector.yaml` |
+| otel-collector | Recibir la telemetría de Claude Code y repartirla | OTLP 4317/4318; `:8889/metrics`; métricas internas en `:8888`; OTLP HTTP a Loki | `config/otel-collector.yaml` |
 | Loki | Guardar los eventos de Claude Code 30 días | API de consulta en `loki:3100` | `config/loki.yaml` |
-| Prometheus | Estado actual: contexto de sesiones, cuotas, salud, contadores OTel | Scrape de `otel-collector`, `claude-collector`, `opencode-collector` | `config/prometheus/prometheus.yml` |
+| Prometheus | Estado actual: contexto de sesiones, cuotas, salud, contadores OTel, frescura de las fuentes y salud del canal de telemetría | Scrape de `otel-collector` (8889 y 8888), `loki`, `claude-collector`, `opencode-collector` | `config/prometheus/prometheus.yml` |
 | Grafana | Dashboards Resumen IA, Claude Code y OpenCode | Datasources Prometheus, Loki, Infinity (`coach-claude`, `coach-opencode`) | `config/grafana/`, `grafana/dashboards/` |
 | claude-collector | Índice de conversaciones, coste híbrido, registro `/data`, páginas, informe | HTTP 9100 | `collectors/claude/` |
 | opencode-collector | Lectura de `opencode.db`, precio de API, registro `/data`, páginas, informe | HTTP 9101 | `collectors/opencode/` |
-| Instalador | Elegir perfiles, generar `.env`, configurar telemetría, migrar volúmenes, arrancar | `Instalar.bat`, `Iniciar-metricas.bat` | `installer/install.ps1` |
+| Instalador | Elegir perfiles, generar `.env`, configurar telemetría, migrar volúmenes, arrancar; actualizar (`-Update`) y desinstalar (`-Uninstall`) | `Instalar.bat`, `Iniciar-metricas.bat`, `Actualizar.bat`, `Desinstalar.bat` | `installer/install.ps1` |
 
 ### Interfaces importantes
 
@@ -78,7 +78,7 @@ Toda ruta pasa primero por `common/security.py` ([08](08-crosscutting-concepts.m
 | --- | --- |
 | `map.py` | Servidor HTTP y rutas; `/metrics`; páginas de precios |
 | `index.py` | Lectura incremental de `~/.claude/projects` en un hilo; coste por petición desde Loki; `hybrid_cost` |
-| `pricing.py`, `prices.json` | Tabla de precios con periodos, tramos, modo rápido e inferencia en EE. UU. |
+| `pricing.py`, `prices.json` | Tabla de precios con periodos, tramos, modo rápido e inferencia en EE. UU.; respaldo con la copia de models.dev ([ADR 0006](../adr/0006-precios-de-claude-code-desde-models-dev.md)) |
 | `ledger_source.py` | Conjuntos de `/data` |
 | `pages.py`, `report_page.py` | Páginas HTML |
 | `coach/` | Informe: `inventory` (comandos y skills), `report` (reglas), `render` (Markdown), `store` (`coach.db`), `metrics` (hilo de fondo y hallazgos), `errors` (clasificación en memoria), `cli` |
@@ -101,3 +101,4 @@ Toda ruta pasa primero por `common/security.py` ([08](08-crosscutting-concepts.m
 | `security.py` | Comprobación de la cabecera `Host` |
 | `report_page.py`, `html_page.py` | Página del informe; CSS y funciones de las páginas |
 | `markdown.py` | Formato del informe (celdas en una línea) |
+| `coach_rules.py` | Catálogo de reglas, umbrales de D1–D10, severidad y forma de un hallazgo, comunes a los dos informes |

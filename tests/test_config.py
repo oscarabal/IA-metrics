@@ -105,6 +105,25 @@ class Compose(unittest.TestCase):
         self.assertIn("claude-collector:9100", wanted)
         self.assertIn("opencode-collector:9101", wanted)
 
+    def test_otel_exporters_defined(self):
+        """Every exporter a pipeline references must exist in `exporters` (a typo like `otlp_http/loki`
+        for `otlphttp/loki` made the collector refuse to start, 2026-11-21)."""
+        cfg = load_yaml("config/otel-collector.yaml")
+        defined = set(cfg["exporters"])
+        for name, pipe in cfg["service"]["pipelines"].items():
+            for exp in pipe.get("exporters", []):
+                self.assertIn(exp, defined, "pipeline %s usa un exportador no definido: %s" % (name, exp))
+
+    def test_telemetry_pipeline_observed(self):
+        """«Estado de las fuentes»: Prometheus reads the collector's internal metrics and Loki's, which stay unpublished."""
+        prom = load_yaml("config/prometheus/prometheus.yml")
+        wanted = {t for j in prom["scrape_configs"] for sc in j["static_configs"] for t in sc["targets"]}
+        self.assertTrue({"otel-collector:8888", "loki:3100"} <= wanted)
+        reader = load_yaml("config/otel-collector.yaml")["service"]["telemetry"]["metrics"]["readers"][0]["pull"]["exporter"]["prometheus"]
+        self.assertEqual((reader["host"], reader["port"]), ("0.0.0.0", 8888))
+        published = " ".join(str(p) for s in self.c["services"].values() for p in s.get("ports", []))
+        self.assertNotIn("8888", published)
+
 
 @unittest.skipIf(yaml is None, "PyYAML no instalado")
 class Grafana(unittest.TestCase):
@@ -190,8 +209,31 @@ class Installer(unittest.TestCase):
         r = subprocess.run(["pwsh", "-NoProfile", "-Command", script], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    @unittest.skipIf(not shutil.which("pwsh"), "pwsh no instalado")
+    def test_uninstall_removes_only_installer_settings(self):
+        r = subprocess.run(["pwsh", "-NoProfile", "-File", os.path.join(R, "tests", "installer_uninstall.ps1"),
+                            "-Installer", os.path.join(R, "installer", "install.ps1")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ok", r.stdout)
+
+    def test_update_and_uninstall_entry_points(self):
+        with open(os.path.join(R, "installer", "install.ps1"), encoding="utf-8-sig") as f:
+            ps1 = f.read()
+        for flag in ("[switch]$Update", "[switch]$Uninstall", "[switch]$RemoveData", "[switch]$Force"):
+            self.assertIn(flag, ps1)
+        for bat, flag in (("Actualizar.bat", "-Update"), ("Desinstalar.bat", "-Uninstall")):
+            with open(os.path.join(R, bat), encoding="ascii") as f:
+                self.assertIn("install.ps1\" %s" % flag, f.read(), bat)
+
+    def test_no_list_assigned_from_if(self):
+        """`$x = if (...) { [List[string]](...) }` unrolls the list into a fixed-size array and a later
+        `$x.Add(...)` fails with «Collection was of a fixed size» (Set-EnvValue with a new key, 2026-11-21)."""
+        with open(os.path.join(R, "installer", "install.ps1"), encoding="utf-8-sig") as f:
+            ps1 = f.read()
+        self.assertNotRegex(ps1, r"=\s*if\s*\([^\n]*\{\s*\[(System\.)?Collections\.Generic\.List")
+
     def test_line_endings(self):
-        for rel in ("Instalar.bat", "Iniciar-metricas.bat", "installer/install.ps1"):
+        for rel in ("Instalar.bat", "Iniciar-metricas.bat", "Actualizar.bat", "Desinstalar.bat", "installer/install.ps1"):
             with open(os.path.join(R, rel), "rb") as f:
                 data = f.read()
             self.assertNotRegex(data, re.compile(rb"[^\r]\n"), rel)

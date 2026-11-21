@@ -2,11 +2,16 @@
 .SYNOPSIS
   Instala IA-metrics: elige qué medir (Claude Code, OpenCode o ambos), genera .env, configura la
   telemetría de Claude Code si hace falta, migra las pilas antiguas y arranca la pila.
+  Con -Update la actualiza y con -Uninstall la desinstala.
 
 .EXAMPLE
   .\install.ps1                         # interactivo
   .\install.ps1 -Tools claude,opencode  # sin preguntas sobre herramientas
   .\install.ps1 -Tools opencode -NoStart
+  .\install.ps1 -Update                 # código (git pull, si se puede), imágenes y arranque
+  .\install.ps1 -Uninstall              # contenedores, variables de settings.json y acceso directo
+  .\install.ps1 -Uninstall -RemoveData  # además, borra el historial (volúmenes de Docker)
+  .\install.ps1 -Uninstall -Force       # sin preguntas (el historial solo se borra con -RemoveData)
 #>
 [CmdletBinding()]
 param(
@@ -15,7 +20,11 @@ param(
   [switch]$NoStart,
   [switch]$SkipClaudeSettings,
   [switch]$SkipMigration,
-  [switch]$NoShortcut
+  [switch]$NoShortcut,
+  [switch]$Update,
+  [switch]$Uninstall,
+  [switch]$RemoveData,
+  [switch]$Force
 )
 
 # 'Continue': en Windows PowerShell 5.1, con 'Stop' la salida de error de docker redirigida aborta el script.
@@ -33,6 +42,21 @@ function Ask-YesNo($question, [bool]$default = $true) {
   return $a.Trim().ToLower().StartsWith('s') -or $a.Trim().ToLower().StartsWith('y')
 }
 
+function Confirm-Step($question, [bool]$default = $true) {
+  # Con -Force no se pregunta: se hace el paso
+  if ($Force) { return $true }
+  return (Ask-YesNo $question $default)
+}
+
+function Backup-Settings($settings) {
+  if (-not (Test-Path $settings)) { return }
+  $bk = Join-Path $Root 'installer\backups'
+  New-Item -ItemType Directory -Force $bk | Out-Null
+  $copy = Join-Path $bk ('settings.json.{0:yyyyMMdd-HHmmss}.bak' -f (Get-Date))
+  Copy-Item $settings $copy -ErrorAction Stop
+  Say "Copia guardada en $copy"
+}
+
 # ------------------------------------------------------------------ .env
 function Read-EnvFile {
   $map = [ordered]@{}
@@ -46,8 +70,10 @@ function Read-EnvFile {
 
 function Set-EnvValue($key, $value) {
   # Cambia o añade una clave conservando el resto del fichero (comentarios incluidos)
-  $lines = if (Test-Path $EnvFile) { [Collections.Generic.List[string]]([IO.File]::ReadAllLines($EnvFile)) }
-           else { [Collections.Generic.List[string]]([IO.File]::ReadAllLines((Join-Path $Root '.env.example'))) }
+  # La lista se crea aparte: asignada desde un if, PowerShell la convierte en un array de tamaño fijo y Add falla
+  $src = if (Test-Path $EnvFile) { $EnvFile } else { Join-Path $Root '.env.example' }
+  $lines = New-Object 'System.Collections.Generic.List[string]'
+  $lines.AddRange([string[]][IO.File]::ReadAllLines($src))
   $done = $false
   for ($i = 0; $i -lt $lines.Count; $i++) {
     if ($lines[$i] -match "^\s*#?\s*$key\s*=") {
@@ -169,13 +195,7 @@ function Set-ClaudeTelemetry {
     Say 'No se ha tocado settings.json. Sin telemetría no habrá coste por llamada; consulta docs/claude-code.md para hacerlo a mano.' 'Yellow'
     return
   }
-  if (Test-Path $settings) {
-    $bk = Join-Path $Root 'installer\backups'
-    New-Item -ItemType Directory -Force $bk | Out-Null
-    $copy = Join-Path $bk ('settings.json.{0:yyyyMMdd-HHmmss}.bak' -f (Get-Date))
-    Copy-Item $settings $copy -ErrorAction Stop
-    Say "Copia guardada en $copy"
-  }
+  Backup-Settings $settings
   foreach ($k in $TelemetryEnv.Keys) {
     if ($obj.env.PSObject.Properties[$k]) { $obj.env.$k = $TelemetryEnv[$k] }
     else { $obj.env | Add-Member -NotePropertyName $k -NotePropertyValue $TelemetryEnv[$k] }
@@ -262,6 +282,82 @@ function Invoke-Migration($selected) {
   }
 }
 
+function Remove-ClaudeTelemetry {
+  # Quita de settings.json solo las variables que puso el instalador y con el mismo valor
+  $settings = Join-Path $ClaudeDir 'settings.json'
+  if (-not (Test-Path $settings)) { return }
+  $raw = [IO.File]::ReadAllText($settings)
+  if (-not $raw.Trim()) { return }
+  $obj = $raw | ConvertFrom-Json -ErrorAction Stop
+  if (-not ($obj.PSObject.Properties.Name -contains 'env') -or -not $obj.env) { return }
+  $keys = @($TelemetryEnv.Keys | Where-Object { $obj.env.PSObject.Properties[$_] -and [string]$obj.env.$_ -eq $TelemetryEnv[$_] })
+  if (-not $keys) { Say 'settings.json no tiene las variables de telemetría del instalador.' 'Gray'; return }
+  Say ''
+  Say "Variables de telemetría que añadió el instalador en $settings :" 'Cyan'
+  $keys | ForEach-Object { Say "  - $_" }
+  if (-not (Confirm-Step '¿Las quito? (se guarda antes una copia)')) { Say 'settings.json no se ha tocado.' 'Yellow'; return }
+  Backup-Settings $settings
+  foreach ($k in $keys) { $obj.env.PSObject.Properties.Remove($k) }
+  if (@($obj.env.PSObject.Properties).Count -eq 0) { $obj.PSObject.Properties.Remove('env') }
+  [IO.File]::WriteAllText($settings, ($obj | ConvertTo-Json -Depth 100), $Utf8NoBom)
+  Say 'Telemetría desactivada. Reinicia Claude Code para que deje de enviar datos.' 'Green'
+  if ($obj.PSObject.Properties['cleanupPeriodDays']) {
+    Say "cleanupPeriodDays sigue en $($obj.cleanupPeriodDays) días; si lo subió el instalador, el valor anterior está en installer\backups." 'Gray'
+  }
+}
+
+# ------------------------------------------------------------------ actualizar y desinstalar
+function Invoke-Update {
+  Say '== Actualizar IA-metrics ==' 'Cyan'
+  Start-DockerIfNeeded
+  Push-Location $Root
+  try {
+    if ((Test-Path (Join-Path $Root '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+      $remote = git remote 2>$null
+      $dirty = git status --porcelain 2>$null
+      if (-not $remote) { Say 'El repositorio no tiene remoto: no se descarga código nuevo.' 'Gray' }
+      elseif ($dirty) { Say 'Hay cambios locales sin commit: no se descarga código nuevo (git pull) para no mezclarlos.' 'Yellow' }
+      elseif (Confirm-Step '¿Descargo la última versión del código? (git pull --ff-only)') {
+        git pull --ff-only
+        if ($LASTEXITCODE -ne 0) { Say 'git pull no pudo avanzar (ramas divergentes o sin red): se sigue con el código actual.' 'Yellow' }
+      }
+    }
+    Say 'Descargando las imágenes de Docker...'
+    docker compose pull
+    if ($LASTEXITCODE -ne 0) { throw 'docker compose pull falló. Revisa la conexión y la salida anterior.' }
+    docker compose up -d --remove-orphans
+    if ($LASTEXITCODE -ne 0) { throw 'docker compose up falló. Revisa la salida anterior.' }
+    Say 'Esperando a que los servicios estén listos...'
+    docker compose up -d --wait --wait-timeout 180 *> $null
+    if ($LASTEXITCODE -ne 0) { Say 'Algún servicio no está sano todavía. Revísalo con: docker compose ps' 'Yellow' }
+  } finally { Pop-Location }
+  Say 'IA-metrics actualizado. El historial se conserva.' 'Green'
+}
+
+function Invoke-Uninstall {
+  Say '== Desinstalar IA-metrics ==' 'Cyan'
+  Say 'Se pararán y eliminarán los contenedores de IA-metrics. La carpeta del proyecto y .env no se borran.'
+  if (-not (Confirm-Step '¿Continuar?' $false)) { Say 'Cancelado.' 'Yellow'; return }
+  $removeData = $RemoveData
+  if (-not $removeData -and -not $Force) {
+    $removeData = Ask-YesNo '¿Borrar también el historial (volúmenes de Prometheus, Loki, Grafana y coach.db)? No se puede deshacer.' $false
+  }
+  Start-DockerIfNeeded
+  Push-Location $Root
+  try {
+    if ($removeData) { docker compose --profile claude --profile opencode down --remove-orphans -v }
+    else { docker compose --profile claude --profile opencode down --remove-orphans }
+    if ($LASTEXITCODE -ne 0) { throw 'docker compose down falló. Revisa la salida anterior.' }
+  } finally { Pop-Location }
+  if ($removeData) { Say 'Contenedores y volúmenes eliminados.' 'Green' }
+  else { Say 'Contenedores eliminados; el historial sigue en los volúmenes ia-metrics_* (se recupera al reinstalar).' 'Green' }
+  Remove-ClaudeTelemetry
+  $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'IA-metrics.lnk'
+  if (Test-Path $lnk) { Remove-Item $lnk -ErrorAction SilentlyContinue; Say "Acceso directo eliminado: $lnk" }
+  Say ''
+  Say 'IA-metrics desinstalado. Para quitarlo del todo, borra la carpeta del proyecto.' 'Green'
+}
+
 # ------------------------------------------------------------------ acceso directo
 function New-Shortcut {
   $desk = [Environment]::GetFolderPath('Desktop')
@@ -278,6 +374,10 @@ function New-Shortcut {
 
 # ================================================================== main
 trap { Say "ERROR: $_" 'Red'; exit 1 }
+if ($Update -and $Uninstall) { throw 'Usa -Update o -Uninstall, no los dos.' }
+if ($RemoveData -and -not $Uninstall) { throw '-RemoveData solo vale con -Uninstall.' }
+if ($Update) { Invoke-Update; exit 0 }
+if ($Uninstall) { Invoke-Uninstall; exit 0 }
 Say '== Instalador de IA-metrics ==' 'Cyan'
 Start-DockerIfNeeded
 

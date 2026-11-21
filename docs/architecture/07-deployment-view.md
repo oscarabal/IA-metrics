@@ -25,7 +25,7 @@ en `.env` decide cuáles arrancan.
 ### Motivo de la topología
 
 - Docker Compose y perfiles: [ADR 0001](../adr/0001-pila-unica-docker-compose-con-perfiles.md).
-- Prometheus, Loki y los puertos 4318/8889 no se publican: no tienen autenticación ni comprueban `Host`.
+- Prometheus, Loki y los puertos 4318/8888/8889 no se publican: no tienen autenticación ni comprueban `Host`.
   `docker-compose.debug.yml` los publica en `127.0.0.1` mientras se depura.
 - Los colectores no tienen imagen propia: montan `collectors/` en `/srv` (solo lectura) con
   `PYTHONPATH=/srv`; un cambio de código se aplica reiniciando el contenedor.
