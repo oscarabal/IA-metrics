@@ -21,7 +21,7 @@ producto formal: el alcance está descrito en el [README](../../README.md).
 | 1 | Privacidad | Nunca se guarda en disco texto de conversaciones, prompts ni errores ([08](08-crosscutting-concepts.md#privacidad-solo-metadatos)) |
 | 2 | Exactitud del coste | Cada coste dice de dónde sale y coincide con la fuente ([08](08-crosscutting-concepts.md#coste-híbrido)) |
 | 3 | Seguridad local | Nada accesible desde la red ni desde páginas web ([08](08-crosscutting-concepts.md#seguridad-de-red-local)) |
-| 4 | Instalación sencilla | Docker y Python 3; un instalador multiplataforma (Windows, macOS, Linux) |
+| 4 | Instalación sencilla | Solo Docker (Python 3 opcional, ADR 0009); un instalador multiplataforma (Windows, macOS, Linux) |
 | 5 | Mantenibilidad | Sin dependencias en los colectores; tests de cada URL de cada dashboard |
 
 ## Partes interesadas

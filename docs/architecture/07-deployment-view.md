@@ -44,7 +44,8 @@ en `.env` decide cuáles arrancan.
 | `collectors/opencode/` | Contenedor `opencode-collector` | Docker local |
 | `grafana/dashboards/` | Montaje de solo lectura en Grafana (provisionado) | Docker local |
 | `coach.db` | Volumen `coach-data` | Docker local |
-| `installer/install.py` | Python 3 en el equipo | Windows, macOS, Linux |
+| `installer/install.py` | Python 3 en el equipo o, si no hay, contenedor efímero `python:3.13-alpine` con el repositorio y `~/.claude` montados (ADR 0009) | Windows, macOS, Linux |
+| `installer/run.bat`, `installer/run.sh` | Shell del equipo (cmd, bash) | Windows / macOS y Linux |
 
 ## Infraestructura nivel 2
 

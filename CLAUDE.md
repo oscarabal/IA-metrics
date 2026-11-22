@@ -45,8 +45,12 @@ docker compose up -d --force-recreate otel-collector    # aplicar cambios en con
 - `config/` — OTel Collector, Loki, Prometheus y provisioning de Grafana.
 - `grafana/dashboards/{global,claude,opencode}` — una carpeta de Grafana por subcarpeta.
 - `installer/install.py` — instalador multiplataforma (Windows, macOS, Linux; solo Python 3 de la librería
-  estándar). Modos `--update` y `--uninstall`; los lanzadores `.bat` (Windows, CRLF) y `.sh` (Unix, LF) solo lo
-  llaman. Desinstalar solo quita de `settings.json` las variables que el instalador puso y con su valor. Las
+  estándar). Modos `--update` y `--uninstall`; los lanzadores `.bat` (Windows, CRLF) y `.sh` (Unix, LF) llaman a
+  `installer/run.bat` / `installer/run.sh`, que usan Python si lo hay y, si no, ejecutan `install.py` en
+  `python:3.13-alpine` en **modo delegado** (ADR 0009): `install.py` edita `.env` y `settings.json` y apunta en
+  `installer/.host-actions` lo que necesita Docker o el escritorio (`host_action`), y el lanzador lo hace. Un paso
+  nuevo que use Docker, el escritorio o rutas fuera de `~/.claude` necesita su rama `DELEGATED` y su acción en los
+  dos lanzadores (lo vigila `test_config.py`). `IA_METRICS_INSTALLER=docker` fuerza el contenedor. Desinstalar solo quita de `settings.json` las variables que el instalador puso y con su valor. Las
   funciones puras (env, settings.json, selección, zona horaria) se prueban en `tests/test_installer.py` sin Docker.
 
 ## Convenciones que hay que respetar
@@ -103,4 +107,5 @@ python tests/run.py opencode     # solo las que contienen "opencode"
   `opencode.db`); `tests/fake_loki.py` sirve la telemetría de Claude. Las cifras esperadas se derivan
   de las constantes de `fixtures.py`, nunca se escriben dos veces.
 - Cada colector se prueba en su propio proceso: ambos tienen un paquete `coach`.
-- `test_config.py` necesita PyYAML; la comprobación del instalador necesita `pwsh` (se salta si no está).
+- `test_config.py` necesita PyYAML. `installer/run.bat` no se prueba en el CI: tras tocarlo, pruébalo en Windows con
+  `set IA_METRICS_INSTALLER=docker` y `Instalar.bat`.

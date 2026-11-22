@@ -8,6 +8,7 @@ docker-compose.override.yml
 # Lo que genera el instalador
 *.lnk
 installer/backups/
+installer/.host-actions
 
 # Datos y salidas locales (bases de datos, informes generados, logs)
 *.db

@@ -15,8 +15,8 @@ Prometheus y un Grafana compartidos y un dashboard que suma el gasto de las dos 
 
 ## Instalación
 
-Requisitos: Docker (Docker Desktop, Rancher Desktop o Podman con `docker compose`) y **Python 3**. Funciona
-en Windows, macOS y Linux. El primer arranque necesita internet para descargar las imágenes y el plugin
+Requisito: Docker (Docker Desktop, Rancher Desktop o Podman con `docker compose`). Funciona en Windows, macOS
+y Linux. Python 3 es opcional: si está, el instalador lo usa; si no, se ejecuta en un contenedor. El primer arranque necesita internet para descargar las imágenes y el plugin
 Infinity de Grafana.
 
 Ejecuta el instalador; para cambiar de herramientas más adelante, vuelve a ejecutarlo:
@@ -24,7 +24,10 @@ Ejecuta el instalador; para cambiar de herramientas más adelante, vuelve a ejec
 - **Windows:** doble clic en **`Instalar.bat`**.
 - **macOS / Linux:** `./instalar.sh` (o `python3 installer/install.py`).
 
-El instalador es un único `installer/install.py` para los tres sistemas; los `.bat` y los `.sh` solo lo lanzan.
+El instalador es un único `installer/install.py` para los tres sistemas; los `.bat` y los `.sh` lo lanzan a través
+de `installer/run.bat` y `installer/run.sh`. Sin Python en el equipo, lo ejecutan en un contenedor
+(`python:3.13-alpine`, la misma imagen que los colectores) y hacen ellos lo que necesita Docker: arrancar la pila,
+el acceso directo, actualizar y quitar los contenedores. Sin Python no se migran las pilas antiguas.
 
 ```mermaid
 flowchart TD
@@ -43,7 +46,7 @@ flowchart TD
     J --> K([docker compose up -d y abre Grafana])
 ```
 
-Sin preguntas: `python3 installer/install.py --tools claude,opencode`
+Sin preguntas: `Instalar.bat --tools claude,opencode` / `./instalar.sh --tools claude,opencode`
 (otras opciones: `--no-start`, `--skip-claude-settings`, `--skip-migration`, `--no-shortcut`).
 
 **Actualizar:** `Actualizar.bat` / `./actualizar.sh` (o `install.py --update`) descarga el código nuevo con

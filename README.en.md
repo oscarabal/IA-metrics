@@ -15,8 +15,8 @@ with a shared Prometheus and Grafana and a dashboard that adds up the spend of b
 
 ## Installation
 
-Requirements: Docker (Docker Desktop, Rancher Desktop or Podman with `docker compose`) and **Python 3**. It
-runs on Windows, macOS and Linux. The first start needs internet access to download the images and Grafana's
+Requirement: Docker (Docker Desktop, Rancher Desktop or Podman with `docker compose`). It runs on Windows,
+macOS and Linux. Python 3 is optional: if present the installer uses it; if not, it runs in a container. The first start needs internet access to download the images and Grafana's
 Infinity plugin.
 
 Run the installer; to change the tools later, run it again:
@@ -24,7 +24,10 @@ Run the installer; to change the tools later, run it again:
 - **Windows:** double-click **`Instalar.bat`**.
 - **macOS / Linux:** `./instalar.sh` (or `python3 installer/install.py`).
 
-The installer is a single `installer/install.py` for all three systems; the `.bat` and `.sh` files just launch it.
+The installer is a single `installer/install.py` for all three systems; the `.bat` and `.sh` files launch it through
+`installer/run.bat` and `installer/run.sh`. Without Python on the computer they run it in a container
+(`python:3.13-alpine`, the same image as the collectors) and do the Docker steps themselves: starting the stack, the
+shortcut, updating and removing the containers. Without Python the old stacks are not migrated.
 
 ```mermaid
 flowchart TD
@@ -43,7 +46,7 @@ flowchart TD
     J --> K([docker compose up -d and opens Grafana])
 ```
 
-Unattended: `python3 installer/install.py --tools claude,opencode`
+Unattended: `Instalar.bat --tools claude,opencode` / `./instalar.sh --tools claude,opencode`
 (other options: `--no-start`, `--skip-claude-settings`, `--skip-migration`, `--no-shortcut`).
 
 **Update:** `Actualizar.bat` / `./actualizar.sh` (or `install.py --update`) pulls the new code with `git pull`

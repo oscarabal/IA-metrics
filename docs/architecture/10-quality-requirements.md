@@ -17,7 +17,7 @@ apoyan en el README.
 | Privacidad | Solo metadatos en disco; prompts en memoria y enmascarables ([08](08-crosscutting-concepts.md#privacidad-solo-metadatos)) | Tests de archivo y prompts. Hueco: los títulos de sesión van en etiquetas de Prometheus (auditoría #4) |
 | Exactitud del coste | Coste híbrido con origen ([08](08-crosscutting-concepts.md#coste-híbrido)) | 0,0 % de desviación de `prices.json` frente a la telemetría ([ADR 0002](../adr/0002-registro-por-peticion-y-api-de-datos.md)); tests de equivalencia con `tests/legacy_oracle.py` |
 | Seguridad local | Puertos mínimos en `127.0.0.1`, comprobación de `Host` ([08](08-crosscutting-concepts.md#seguridad-de-red-local)) | `test_config.py`; auditoría del 20-11-2026 sin hallazgos altos |
-| Instalación sencilla | Docker y Python 3; instalador multiplataforma; `up -d --wait` | Funciones del instalador probadas en `tests/test_installer.py`; sin prueba de extremo a extremo en cada SO |
+| Instalación sencilla | Solo Docker (Python 3 opcional); instalador multiplataforma; `up -d --wait` | Funciones del instalador y modo delegado probados en `tests/test_installer.py`; lanzadores vigilados en `tests/test_config.py`; `run.bat` sin prueba automática; sin prueba de extremo a extremo en cada SO |
 | Mantenibilidad | Sin dependencias; código común; tests de cada URL de cada dashboard | `python tests/run.py` y CI en cada push |
 | Rendimiento | Lecturas en segundo plano ([08](08-crosscutting-concepts.md#trabajo-en-segundo-plano)) | `test_scrape_reads_no_database`; `opencode_series_read_seconds` en Prometheus |
 
