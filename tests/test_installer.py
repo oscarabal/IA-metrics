@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -103,6 +104,84 @@ class TimeZone(unittest.TestCase):
     def test_returns_name_or_none(self):
         tz = install.iana_timezone()   # no debe lanzar en ningún SO
         self.assertTrue(tz is None or "/" in tz or tz == "UTC")
+
+
+class Delegated(unittest.TestCase):
+    """Modo delegado (ADR 0009): install.py en un contenedor, sin Docker. Edita .env y settings.json y deja
+    al lanzador, en el fichero de acciones, todo lo que necesita Docker o el escritorio."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.claude = os.path.join(self.tmp, "claude")
+        os.makedirs(os.path.join(self.claude, "projects"))
+        with open(os.path.join(self.tmp, ".env.example"), "w") as f:
+            f.write("GRAFANA_ADMIN_PASSWORD=change-me\n# TZ=\n")
+        self.actions = os.path.join(self.tmp, ".host-actions")
+        patches = {
+            "ROOT": self.tmp, "ENV_FILE": os.path.join(self.tmp, ".env"),
+            "ENV_EXAMPLE": os.path.join(self.tmp, ".env.example"), "CLAUDE_DIR": self.claude,
+            "HOST_ACTIONS": self.actions, "DELEGATED": True,
+            "_HOST_PATHS": ((self.claude, r"C:\Users\ana\.claude"),),
+        }
+        for k, v in patches.items():
+            p = mock.patch.object(install, k, v)
+            p.start()
+            self.addCleanup(p.stop)
+        # En modo delegado no hay Docker: cualquier llamada a un proceso es un error
+        for name in ("run", "Popen"):
+            p = mock.patch.object(install.subprocess, name, side_effect=AssertionError("proceso en modo delegado"))
+            p.start()
+            self.addCleanup(p.stop)
+        env = mock.patch.dict(os.environ, {"HOST_TZ_WINDOWS": "Romance Standard Time", "HOST_OPENCODE_DB": "0"})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def run_main(self, argv, answers=()):
+        replies = iter(answers)
+        with mock.patch("builtins.input", lambda *_: next(replies, "")), mock.patch("sys.stdout"):
+            return install.main(argv)
+
+    def test_install_writes_files_and_leaves_docker_to_the_launcher(self):
+        self.assertEqual(self.run_main(["--tools", "claude,opencode"], answers=["s", "n"]), 0)
+        env = install.read_env_file(install.ENV_FILE)
+        self.assertEqual(env["COMPOSE_PROFILES"], "claude,opencode")
+        self.assertEqual(env["TZ"], "Europe/Madrid")              # de HOST_TZ_WINDOWS, no del contenedor
+        self.assertNotIn(env["GRAFANA_ADMIN_PASSWORD"], ("", "change-me"))
+        settings = install.load_settings(os.path.join(self.claude, "settings.json"))
+        self.assertEqual(install.telemetry_changes(settings), [])
+        self.assertEqual(install.read_host_actions(self.actions),
+                         {"OPENCODE_DIRS": "1", "SHORTCUT": "1", "START": "1"})
+
+    def test_no_start_and_no_shortcut(self):
+        self.run_main(["--tools", "claude", "--no-start", "--no-shortcut", "--skip-claude-settings"])
+        self.assertEqual(install.read_host_actions(self.actions), {})
+
+    def test_uninstall(self):
+        path = os.path.join(self.claude, "settings.json")
+        install.write_settings(path, install.apply_telemetry({"model": "opus"}))
+        self.assertEqual(self.run_main(["--uninstall", "--remove-data", "--force"]), 0)
+        self.assertEqual(install.load_settings(path), {"model": "opus"})
+        self.assertEqual(install.read_host_actions(self.actions),
+                         {"DOWN": "1", "REMOVE_DATA": "1", "REMOVE_SHORTCUT": "1"})
+
+    def test_update_and_start_are_not_delegated(self):
+        for flag in ("--update", "--start"):
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                install.main([flag])
+
+    def test_paths_shown_as_on_the_host(self):
+        self.assertEqual(install.shown(os.path.join(self.claude, "settings.json")),
+                         r"C:\Users\ana\.claude\settings.json")
+        self.assertEqual(install.shown("/otra/ruta"), "/otra/ruta")
+
+    def test_timezone_and_opencode_from_the_launcher(self):
+        with mock.patch.dict(os.environ, {"HOST_TZ": "America/Bogota"}):
+            self.assertEqual(install.iana_timezone(), "America/Bogota")
+        with mock.patch.dict(os.environ, {"HOST_TZ_WINDOWS": ""}):
+            self.assertIsNone(install.iana_timezone())             # nunca la UTC del contenedor
+        self.assertFalse(install.opencode_present())
+        with mock.patch.dict(os.environ, {"HOST_OPENCODE_DB": "1"}):
+            self.assertTrue(install.opencode_present())
 
 
 if __name__ == "__main__":

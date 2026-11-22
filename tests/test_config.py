@@ -202,47 +202,81 @@ class Grafana(unittest.TestCase):
 
 
 class Installer(unittest.TestCase):
-    """El instalador es install.py (un solo fichero para Windows, macOS y Linux); los .bat y .sh lo llaman.
-    Sus funciones se prueban en tests/test_installer.py."""
+    """El instalador es install.py (un solo fichero para Windows, macOS y Linux). Los .bat y .sh llaman a
+    installer/run.bat o installer/run.sh, que usan Python si está y, si no, install.py en un contenedor (ADR 0009).
+    Las funciones de install.py se prueban en tests/test_installer.py."""
 
-    def test_entry_points_call_install_py(self):
-        for name, flag in (("Instalar.bat", ""), ("Actualizar.bat", "--update"), ("Desinstalar.bat", "--uninstall")):
-            with open(os.path.join(R, name), encoding="ascii") as f:
-                bat = f.read()
-            self.assertIn("install.py", bat, name)
-            if flag:
-                self.assertIn(flag, bat, name)
-        for name, flag in (("instalar.sh", ""), ("actualizar.sh", "--update"),
-                           ("desinstalar.sh", "--uninstall"), ("iniciar-metricas.sh", "--start")):
-            with open(os.path.join(R, name), encoding="utf-8") as f:
-                sh = f.read()
-            self.assertIn("install.py", sh, name)
-            if flag:
-                self.assertIn(flag, sh, name)
+    BAT = (("Instalar.bat", "install"), ("Actualizar.bat", "update"), ("Desinstalar.bat", "uninstall"))
+    SH = (("instalar.sh", "install"), ("actualizar.sh", "update"), ("desinstalar.sh", "uninstall"),
+          ("iniciar-metricas.sh", "start"))
+
+    def read(self, *rel, encoding="utf-8"):
+        with open(os.path.join(R, *rel), encoding=encoding) as f:
+            return f.read()
+
+    def test_entry_points_call_the_launcher(self):
+        for name, mode in self.BAT:
+            bat = self.read(name, encoding="ascii")
+            self.assertIn(r"installer\run.bat", bat, name)
+            self.assertIn('set "IA_METRICS_MODE=%s"' % mode, bat, name)
+        for name, mode in self.SH:
+            self.assertIn("installer/run.sh\" %s" % mode, self.read(name), name)
+
+    def test_launchers_call_install_py_with_each_mode(self):
+        bat, sh = self.read("installer", "run.bat", encoding="ascii"), self.read("installer", "run.sh")
+        for flag in ("--update", "--uninstall"):
+            self.assertIn(r"installer\install.py " + flag, bat, flag)
+            self.assertIn("installer/install.py " + flag, sh, flag)
+        self.assertIn("installer/install.py --start", sh)
+
+    def test_container_uses_the_collectors_image(self):
+        """Sin Python, install.py corre en la misma imagen que los colectores: no se descarga otra."""
+        image = load_yaml(os.path.join(R, "docker-compose.yml"))["x-collector"]["image"]
+        self.assertIn('set "PY_IMAGE=%s"' % image, self.read("installer", "run.bat", encoding="ascii"))
+        self.assertIn('PY_IMAGE="%s"' % image, self.read("installer", "run.sh"))
+
+    def test_launchers_handle_every_host_action(self):
+        """Cada paso que install.py deja al lanzador en modo delegado lo atienden los dos lanzadores."""
+        keys = set(re.findall(r'host_action\("([A-Z_]+)"\)', self.read("installer", "install.py")))
+        self.assertEqual(keys, {"START", "SHORTCUT", "OPENCODE_DIRS", "DOWN", "REMOVE_DATA", "REMOVE_SHORTCUT"})
+        bat, sh = self.read("installer", "run.bat", encoding="ascii"), self.read("installer", "run.sh")
+        for k in keys:
+            self.assertIn("HA_" + k, bat, k)
+            self.assertIn("action " + k, sh, k)
+        self.assertIn("installer/.host-actions", self.read(".gitignore"))
 
     def test_install_py_has_modes(self):
-        with open(os.path.join(R, "installer", "install.py"), encoding="utf-8") as f:
-            src = f.read()
+        src = self.read("installer", "install.py")
         for flag in ("--tools", "--update", "--uninstall", "--remove-data", "--start", "--force", "--no-start"):
             self.assertIn(flag, src, flag)
 
     def test_no_powershell_installer(self):
         """El instalador de PowerShell se retiró: nada debe seguir apuntando a install.ps1."""
         self.assertFalse(os.path.exists(os.path.join(R, "installer", "install.ps1")))
-        for name in ("Instalar.bat", "Actualizar.bat", "Desinstalar.bat"):
-            with open(os.path.join(R, name), encoding="ascii") as f:
-                self.assertNotIn("install.ps1", f.read(), name)
+        for name in ("Instalar.bat", "Actualizar.bat", "Desinstalar.bat", os.path.join("installer", "run.bat")):
+            self.assertNotIn("install.ps1", self.read(name, encoding="ascii"), name)
 
     def test_line_endings(self):
         """Windows necesita CRLF en los .bat; los .sh de Unix van con LF."""
-        for rel in ("Instalar.bat", "Iniciar-metricas.bat", "Actualizar.bat", "Desinstalar.bat"):
+        for rel in ("Instalar.bat", "Iniciar-metricas.bat", "Actualizar.bat", "Desinstalar.bat",
+                    os.path.join("installer", "run.bat")):
             with open(os.path.join(R, rel), "rb") as f:
                 data = f.read()
             self.assertNotRegex(data, re.compile(rb"[^\r]\n"), rel)
-        for rel in ("instalar.sh", "actualizar.sh", "desinstalar.sh", "iniciar-metricas.sh"):
+        for rel in ("instalar.sh", "actualizar.sh", "desinstalar.sh", "iniciar-metricas.sh",
+                    os.path.join("installer", "run.sh")):
             with open(os.path.join(R, rel), "rb") as f:
                 data = f.read()
             self.assertNotIn(b"\r\n", data, rel)
+
+    def test_shell_syntax(self):
+        if not shutil.which("bash"):
+            self.skipTest("sin bash")
+        for rel in ("instalar.sh", "actualizar.sh", "desinstalar.sh", "iniciar-metricas.sh",
+                    os.path.join("installer", "run.sh")):
+            r = subprocess.run(["bash", "-n", os.path.join(R, rel)], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, rel + r.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

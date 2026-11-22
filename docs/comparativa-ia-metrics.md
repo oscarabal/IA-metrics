@@ -51,7 +51,7 @@ flowchart LR
 
 | Área | claude-metrics | opencode-metrics | IA-metrics |
 | --- | --- | --- | --- |
-| Instalación | Copiar `.env`, editar `settings.json` a mano, `.bat` de arranque | Copiar `.env`, `.bat` de arranque | Instalador único `install.py` (Windows, macOS, Linux; solo Python 3): elige herramientas, genera `.env` y contraseña, configura la telemetría con copia previa, detecta la zona horaria y migra las pilas antiguas |
+| Instalación | Copiar `.env`, editar `settings.json` a mano, `.bat` de arranque | Copiar `.env`, `.bat` de arranque | Instalador único `install.py` (Windows, macOS, Linux; Python 3 o, si falta, un contenedor): elige herramientas, genera `.env` y contraseña, configura la telemetría con copia previa, detecta la zona horaria y migra las pilas antiguas |
 | Herramientas | Solo Claude Code | Solo OpenCode | Una, otra o ambas (perfiles de Docker Compose) |
 | Gasto total en IA | No | No | Dashboard «Resumen IA» con las dos herramientas sumadas |
 | Grafana / Prometheus | Propios (:3000) | Propios (:3001) | Uno de cada, compartidos |
@@ -153,7 +153,7 @@ flowchart TD
 - **Más dependencia del plugin Infinity**, que además necesita internet en el primer arranque.
 - **Con una sola herramienta instalada**, los paneles del Resumen IA muestran un aviso de conexión para la otra
   (antes salía 0).
-- **El instalador añade Python 3 como requisito** (además de Docker): un solo `install.py` para Windows, macOS y Linux.
+- **Un solo `install.py` para Windows, macOS y Linux** sin más requisito que Docker: usa Python 3 si está y, si no, se ejecuta en un contenedor (ADR 0009).
 
 ## Pendiente
 

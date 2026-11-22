@@ -1,6 +1,6 @@
 # ADR 0008: Instalador único en Python, multiplataforma
 
-- **Estado:** aceptada
+- **Estado:** aceptada; el requisito de Python 3 lo retira [ADR 0009](0009-instalador-sin-python-en-el-equipo.md)
 - **Fecha:** 2026-11-21
 - **Sustituye a:** el instalador `installer/install.ps1` (PowerShell 5.1, solo Windows).
 

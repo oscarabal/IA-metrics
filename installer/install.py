@@ -12,6 +12,9 @@ Elige qué medir (Claude Code, OpenCode o ambos), genera .env, activa la telemet
     python3 installer/install.py --start             # solo arrancar y abrir Grafana
 
 Las funciones puras (env, settings.json, selección, zona horaria) no tocan Docker: los tests las usan.
+
+Sin Python en el equipo, los lanzadores (installer/run.bat, installer/run.sh) ejecutan este fichero dentro de un
+contenedor: es el modo delegado (ADR 0009). Ver HOST_ACTIONS.
 """
 import argparse
 import datetime
@@ -34,6 +37,15 @@ CLAUDE_DIR = os.environ.get("CLAUDE_DIR") or os.path.join(HOME, ".claude")
 OPENCODE_DB = os.path.join(HOME, ".local", "share", "opencode", "opencode.db")
 IS_WINDOWS = os.name == "nt"
 IS_MAC = sys.platform == "darwin"
+
+# Modo delegado (ADR 0009): sin Python en el equipo, el lanzador ejecuta este fichero en python:3.13-alpine con el
+# repositorio en /repo y ~/.claude montado en CLAUDE_DIR. Ahí se decide todo y se editan .env y settings.json, pero
+# no hay Docker ni escritorio: cada paso que los necesita se apunta como CLAVE=1 en este fichero y lo hace el
+# lanzador al terminar (START, SHORTCUT, OPENCODE_DIRS, DOWN, REMOVE_DATA, REMOVE_SHORTCUT).
+HOST_ACTIONS = os.environ.get("IA_METRICS_HOST_ACTIONS", "")
+DELEGATED = bool(HOST_ACTIONS)
+# Rutas del equipo, para que los mensajes no muestren las del contenedor (/host/claude, /root)
+_HOST_PATHS = ((CLAUDE_DIR, os.environ.get("HOST_CLAUDE_DIR", "")), (HOME, os.environ.get("HOST_HOME", "")))
 
 # Variables de telemetría que el instalador pone en settings.json (y que Desinstalar quita si siguen con este valor)
 TELEMETRY_ENV = {
@@ -83,8 +95,44 @@ def ask_yes_no(question, default=True):
     return a in ("s", "si", "sí", "y", "yes")
 
 
+def shown(path):
+    """La ruta tal como la ve el usuario en su equipo (en modo delegado, la del contenedor traducida)."""
+    for inner, outer in _HOST_PATHS:
+        if outer and (path == inner or path.startswith(inner.rstrip("/") + "/")):
+            rest = path[len(inner):]
+            return outer.rstrip("/\\") + (rest.replace("/", "\\") if "\\" in outer else rest)
+    return path
+
+
+def host_action(key, value="1"):
+    """Modo delegado: apunta un paso que hará el lanzador en el equipo."""
+    with open(HOST_ACTIONS, "a", encoding="utf-8", newline="\n") as f:
+        f.write("%s=%s\n" % (key, value))
+
+
+def read_host_actions(path):
+    """{CLAVE: valor} del fichero de acciones (lo usan los tests; los lanzadores lo leen por su cuenta)."""
+    out = {}
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                k, sep, v = line.strip().partition("=")
+                if sep:
+                    out[k] = v
+    return out
+
+
+def opencode_present():
+    """Si existe opencode.db. En modo delegado lo dice el lanzador (HOST_OPENCODE_DB=1/0): no se monta esa carpeta."""
+    flag = os.environ.get("HOST_OPENCODE_DB", "")
+    if flag in ("0", "1"):
+        return flag == "1"
+    return os.path.exists(OPENCODE_DB)
+
+
 # ---------------------------------------------------------------- .env (preserva comentarios)
-def read_env_file(path=ENV_FILE):
+def read_env_file(path=None):
+    path = path or ENV_FILE   # en tiempo de llamada: así los tests pueden apuntar a otro .env
     out = {}
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
@@ -188,7 +236,7 @@ def configure_telemetry():
         say("La telemetría de Claude Code ya está configurada.", "green")
         return
     say("")
-    say("Para medir Claude Code hay que activar su telemetría en %s :" % path, "cyan")
+    say("Para medir Claude Code hay que activar su telemetría en %s :" % shown(path), "cyan")
     for k, old, new in changes:
         say("  + %s=%s" % (k, new) if old is None else "  ~ %s=%s  ->  %s" % (k, old, new))
     if not ask_yes_no("¿Aplico estos cambios? (se guarda antes una copia)"):
@@ -230,7 +278,7 @@ def remove_claude_telemetry(force=False):
         say("settings.json no tiene las variables de telemetría del instalador.")
         return
     say("")
-    say("Variables de telemetría que añadió el instalador en %s :" % path, "cyan")
+    say("Variables de telemetría que añadió el instalador en %s :" % shown(path), "cyan")
     for k in present:
         say("  - %s" % k)
     if not (force or ask_yes_no("¿Las quito? (se guarda antes una copia)")):
@@ -263,7 +311,7 @@ def parse_tools(text, names=("claude", "opencode")):
 
 def select_tools():
     has_claude = os.path.isdir(os.path.join(CLAUDE_DIR, "projects"))
-    has_open = os.path.exists(OPENCODE_DB)
+    has_open = opencode_present()
     say("")
     say("¿Qué quieres medir?", "cyan")
     say("  1) Claude Code   %s" % ("(detectado)" if has_claude else "(no detectado)"))
@@ -280,6 +328,15 @@ def select_tools():
 # ---------------------------------------------------------------- zona horaria
 def iana_timezone():
     """El nombre IANA de la zona horaria del equipo, o None si no se puede determinar."""
+    # Modo delegado: la da el lanzador (el contenedor está en UTC y no ve la del equipo)
+    host = os.environ.get("HOST_TZ", "").strip()
+    if host:
+        return host
+    win_host = os.environ.get("HOST_TZ_WINDOWS", "").strip()
+    if win_host:
+        return WINDOWS_TO_IANA.get(win_host)
+    if DELEGATED:
+        return None
     if not IS_WINDOWS:
         link = "/etc/localtime"
         if os.path.islink(link):
@@ -310,6 +367,8 @@ def docker_available():
 
 
 def start_docker_if_needed():
+    if DELEGATED:   # el lanzador ya lo arrancó: sin Docker no habría contenedor
+        return
     if shutil.which("docker") is None:
         raise SystemExit("No se encuentra Docker. Instala Docker Desktop (o Rancher Desktop / Podman con "
                          "docker compose) y vuelve a ejecutar el instalador.")
@@ -412,8 +471,8 @@ def make_shortcut():
             path = os.path.join(apps, "ia-metrics.desktop")
             with open(path, "w", encoding="utf-8") as f:
                 f.write("[Desktop Entry]\nType=Application\nName=IA-metrics\n"
-                        "Exec=%s %s --start\nTerminal=true\nCategories=Development;\n"
-                        % (shutil.which("python3") or "python3", os.path.join(ROOT, "installer", "install.py")))
+                        "Exec=%s\nTerminal=true\nCategories=Development;\n"
+                        % os.path.join(ROOT, "iniciar-metricas.sh"))   # usa Python o el contenedor (ADR 0009)
             say("Lanzador creado: %s" % path)
     except Exception as e:  # el acceso directo es un extra: un fallo no corta la instalación
         say("No se pudo crear el acceso directo (%s)." % type(e).__name__, "yellow")
@@ -509,6 +568,13 @@ def invoke_uninstall(remove_data=False, force=False):
     if not remove_data and not force:
         remove_data = ask_yes_no("¿Borrar también el historial (volúmenes de Prometheus, Loki, Grafana y "
                                  "coach.db)? No se puede deshacer.", default=False)
+    if DELEGATED:   # los contenedores y el acceso directo los quita el lanzador al terminar
+        host_action("DOWN")
+        if remove_data:
+            host_action("REMOVE_DATA")
+        remove_claude_telemetry(force)
+        host_action("REMOVE_SHORTCUT")
+        return
     start_docker_if_needed()
     args = ["--profile", "claude", "--profile", "opencode", "down", "--remove-orphans"]
     if remove_data:
@@ -527,7 +593,7 @@ def invoke_uninstall(remove_data=False, force=False):
 def do_install(args):
     say("== Instalador de IA-metrics ==", "cyan")
     start_docker_if_needed()
-    tools = parse_tools(",".join(args.tools)) if args.tools else select_tools()
+    tools = parse_tools(args.tools) if args.tools else select_tools()
     profiles = ",".join(tools)
     say("Herramientas: %s" % profiles, "green")
 
@@ -556,18 +622,31 @@ def do_install(args):
             configure_telemetry()
             configure_retention()
     if "opencode" in tools:
-        if not os.path.exists(OPENCODE_DB):
+        if not opencode_present():
             say("Aviso: no se encuentra %s. Si OpenCode guarda sus datos en otra carpeta, define "
-                "OPENCODE_DATA_DIR en .env." % OPENCODE_DB, "yellow")
-        os.makedirs(os.path.join(HOME, ".config", "opencode", "commands"), exist_ok=True)
-        os.makedirs(os.path.join(HOME, ".cache", "opencode"), exist_ok=True)
+                "OPENCODE_DATA_DIR en .env." % shown(OPENCODE_DB), "yellow")
+        if DELEGATED:   # el contenedor no ve esas carpetas: las crea el lanzador
+            host_action("OPENCODE_DIRS")
+        else:
+            os.makedirs(os.path.join(HOME, ".config", "opencode", "commands"), exist_ok=True)
+            os.makedirs(os.path.join(HOME, ".cache", "opencode"), exist_ok=True)
 
     if not args.skip_migration:
-        migrate(tools, args.force)
+        if DELEGATED:
+            say("Sin Python en el equipo no se migran las pilas antiguas (claude-metrics, opencode-metrics). Si las "
+                "tienes, páralas con «docker compose down» en su carpeta o instala Python 3 y repite.", "yellow")
+        else:
+            migrate(tools, args.force)
     if not args.no_shortcut:
-        make_shortcut()
+        if DELEGATED:
+            host_action("SHORTCUT")
+        else:
+            make_shortcut()
     if args.no_start:
-        say("Instalación lista. Arranca con: python3 installer/install.py --start", "green")
+        say("Instalación lista. Arranca con Iniciar-metricas.bat (Windows) o ./iniciar-metricas.sh.", "green")
+        return
+    if DELEGATED:   # el lanzador para los dos perfiles y levanta los elegidos
+        host_action("START")
         return
     # quita los servicios del perfil que ya no se usa y levanta los elegidos
     compose("--profile", "claude", "--profile", "opencode", "stop", check=False, quiet=True)
@@ -591,6 +670,8 @@ def main(argv=None):
         p.error("Usa --update o --uninstall, no los dos.")
     if args.remove_data and not args.uninstall:
         p.error("--remove-data solo vale con --uninstall.")
+    if DELEGATED and (args.update or args.start):
+        p.error("--update y --start no usan el contenedor: los hace el lanzador (installer/run.bat, installer/run.sh).")
     try:
         if args.update:
             invoke_update(args.force)
