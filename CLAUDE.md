@@ -47,7 +47,8 @@ docker compose up -d --force-recreate otel-collector    # aplicar cambios en con
 - `config/` — OTel Collector, Loki, Prometheus y provisioning de Grafana.
 - `grafana/dashboards/{global,claude,opencode}` — una carpeta de Grafana por subcarpeta.
 - `installer/install.py` — instalador multiplataforma (Windows, macOS, Linux; solo Python 3 de la librería
-  estándar). Modos `--update` y `--uninstall`; los lanzadores `.bat` (Windows, CRLF) y `.sh` (Unix, LF) llaman a
+  estándar). Modos `--update` (tras `up -d` hace `docker compose restart`: el código y la configuración van
+  montados y `up -d` no los recarga; lo vigila `test_config.py`) y `--uninstall`; los lanzadores `.bat` (Windows, CRLF) y `.sh` (Unix, LF) llaman a
   `installer/run.bat` / `installer/run.sh`, que usan Python si lo hay y, si no, ejecutan `install.py` en
   `python:3.13-alpine` en **modo delegado** (ADR 0009): `install.py` edita `.env` y `settings.json` y apunta en
   `installer/.host-actions` lo que necesita Docker o el escritorio (`host_action`), y el lanzador lo hace. Un paso

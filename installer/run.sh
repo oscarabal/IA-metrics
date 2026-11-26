@@ -187,6 +187,10 @@ case $MODE in
     say "Descargando las imágenes de Docker..."
     docker compose pull || { say "Falló: docker compose pull"; exit 1; }
     docker compose up -d --remove-orphans || { say "Falló: docker compose up"; exit 1; }
+    # up -d solo recrea lo que cambia en docker-compose.yml; el código y la configuración montados se cargan al reiniciar
+    say "Reiniciando los servicios para cargar el código y la configuración nuevos..."
+    docker compose restart >/dev/null 2>&1 \
+      || warn "No se pudieron reiniciar los servicios. Hazlo a mano con: docker compose restart"
     say "Esperando a que los servicios estén listos..."
     docker compose up -d --wait --wait-timeout 180 >/dev/null 2>&1 \
       || warn "Algún servicio no está sano todavía. Revísalo con: docker compose ps"
