@@ -50,8 +50,9 @@ Sin preguntas: `Instalar.bat --tools claude,opencode` / `./instalar.sh --tools c
 (otras opciones: `--no-start`, `--skip-claude-settings`, `--skip-migration`, `--no-shortcut`).
 
 **Actualizar:** `Actualizar.bat` / `./actualizar.sh` (o `install.py --update`) descarga el código nuevo con
-`git pull` si el repositorio no tiene cambios locales, descarga las imágenes y reinicia la pila; el historial
-se conserva.
+`git pull` si el repositorio no tiene cambios locales, descarga las imágenes y reinicia la pila (también los servicios que no
+cambian, para que los colectores carguen el código nuevo y Grafana, Prometheus y el collector su configuración);
+el historial se conserva.
 
 **Desinstalar:** `Desinstalar.bat` / `./desinstalar.sh` (o `install.py --uninstall`) elimina los contenedores,
 quita de `settings.json` las variables de telemetría que puso el instalador (con copia previa) y el acceso

@@ -245,6 +245,25 @@ class Installer(unittest.TestCase):
             self.assertIn("action " + k, sh, k)
         self.assertIn("installer/.host-actions", self.read(".gitignore"))
 
+    def test_update_restarts_the_services(self):
+        """`up -d` solo recrea lo que cambia en docker-compose.yml: el código de los colectores y la configuración
+        montados no se recargan. Actualizar reinicia los servicios después de `up -d` y antes de esperar a que estén
+        sanos, con Python (install.py) y sin él (run.bat, run.sh)."""
+        sources = {
+            "install.py": (self.read("installer", "install.py"),
+                           ('compose("up", "-d", "--remove-orphans")', "restart_services()", "wait_healthy()"),
+                           "def invoke_update"),
+            "run.bat": (self.read("installer", "run.bat", encoding="ascii"),
+                        ("docker compose up -d --remove-orphans", "docker compose restart", "--wait"), ":docker_update"),
+            "run.sh": (self.read("installer", "run.sh"),
+                       ("docker compose up -d --remove-orphans", "docker compose restart", "--wait"), "== Actualizar IA-metrics =="),
+        }
+        for name, (text, steps, start) in sources.items():
+            section = text[text.index(start):]
+            positions = [section.index(step) for step in steps]
+            self.assertEqual(positions, sorted(positions), "%s: %s" % (name, positions))
+        self.assertIn('compose("restart"', self.read("installer", "install.py"))
+
     def test_install_py_has_modes(self):
         src = self.read("installer", "install.py")
         for flag in ("--tools", "--update", "--uninstall", "--remove-data", "--start", "--force", "--no-start"):

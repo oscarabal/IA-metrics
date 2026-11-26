@@ -106,6 +106,18 @@ class TimeZone(unittest.TestCase):
         self.assertTrue(tz is None or "/" in tz or tz == "UTC")
 
 
+class Update(unittest.TestCase):
+    def test_restarts_services_after_up(self):
+        """Tras `up -d` se reinician los servicios: el código y la configuración montados no se recargan solos."""
+        calls = []
+        with mock.patch.object(install, "compose", lambda *a, **k: calls.append(a) or 0), \
+                mock.patch.object(install, "start_docker_if_needed", lambda: None), \
+                mock.patch.object(install, "wait_healthy", lambda *a, **k: calls.append(("wait",))), \
+                mock.patch.object(install, "ROOT", tempfile.mkdtemp()), mock.patch("sys.stdout"):
+            install.invoke_update(force=True)
+        self.assertEqual(calls, [("pull",), ("up", "-d", "--remove-orphans"), ("restart",), ("wait",)])
+
+
 class Delegated(unittest.TestCase):
     """Modo delegado (ADR 0009): install.py en un contenedor, sin Docker. Edita .env y settings.json y deja
     al lanzador, en el fichero de acciones, todo lo que necesita Docker o el escritorio."""

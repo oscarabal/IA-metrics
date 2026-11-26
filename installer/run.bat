@@ -70,6 +70,9 @@ docker compose pull
 if errorlevel 1 ( echo Fallo: docker compose pull & exit /b 1 )
 docker compose up -d --remove-orphans
 if errorlevel 1 ( echo Fallo: docker compose up & exit /b 1 )
+rem up -d solo recrea lo que cambia en docker-compose.yml; el codigo y la configuracion montados se cargan al reiniciar
+echo Reiniciando los servicios para cargar el codigo y la configuracion nuevos...
+docker compose restart >nul 2>&1 || echo AVISO: no se pudieron reiniciar los servicios. Hazlo a mano con: docker compose restart
 echo Esperando a que los servicios esten listos...
 docker compose up -d --wait --wait-timeout 180 >nul 2>&1 || echo AVISO: algun servicio no esta sano todavia. Revisalo con: docker compose ps
 echo IA-metrics actualizado. El historial se conserva.

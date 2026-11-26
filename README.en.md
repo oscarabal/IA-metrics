@@ -50,7 +50,8 @@ Unattended: `Instalar.bat --tools claude,opencode` / `./instalar.sh --tools clau
 (other options: `--no-start`, `--skip-claude-settings`, `--skip-migration`, `--no-shortcut`).
 
 **Update:** `Actualizar.bat` / `./actualizar.sh` (or `install.py --update`) pulls the new code with `git pull`
-if the repository has no local changes, pulls the images and restarts the stack; history is kept.
+if the repository has no local changes, pulls the images and restarts the stack (also the services that did not change, so the collectors load
+the new code and Grafana, Prometheus and the collector their configuration); history is kept.
 
 **Uninstall:** `Desinstalar.bat` / `./desinstalar.sh` (or `install.py --uninstall`) removes the containers,
 removes from `settings.json` the telemetry variables the installer added (after a backup) and the shortcut,

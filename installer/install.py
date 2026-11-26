@@ -555,8 +555,19 @@ def invoke_update(force=False):
     say("Descargando las imágenes de Docker...")
     compose("pull")
     compose("up", "-d", "--remove-orphans")
+    restart_services()
     wait_healthy()
     say("IA-metrics actualizado. El historial se conserva.", "green")
+
+
+def restart_services():
+    """`up -d` solo recrea un servicio si cambia su definición en docker-compose.yml. El código de los colectores
+    y la configuración de Grafana, Prometheus, Loki y el collector están montados desde la carpeta: tras un
+    git pull (o cualquier cambio en ella) siguen con la versión vieja hasta reiniciarlos. El historial está en
+    los volúmenes y en las fuentes, así que reiniciar no pierde nada."""
+    say("Reiniciando los servicios para cargar el código y la configuración nuevos...")
+    if compose("restart", check=False, quiet=True) != 0:
+        say("No se pudieron reiniciar los servicios. Hazlo a mano con: docker compose restart", "yellow")
 
 
 def invoke_uninstall(remove_data=False, force=False):
