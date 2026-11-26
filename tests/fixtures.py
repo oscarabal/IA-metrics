@@ -56,14 +56,21 @@ OC_PARTS = [
 ]
 
 
+# Which OpenCode the OpenCode fixture imitates: "v1" (opencode.db with session/message/part and models.json)
+# or "v2" (OpenCode 2.x: session_v2/session_message/session_part, catalog in the kv table, no models.json)
+OC_SCHEMA = os.environ.get("OC_FIXTURE_SCHEMA", "v1")
+
+
 def make_opencode(root):
-    """opencode.db, models.json and a commands folder under `root`; returns the paths."""
+    """opencode.db, the models catalog and a commands folder under `root`; returns the paths."""
     data, cache, cmds = (os.path.join(root, d) for d in ("data", "cache", "commands"))
     for d in (data, cache, cmds):
         os.makedirs(d, exist_ok=True)
     db = os.path.join(data, "opencode.db")
     if os.path.exists(db):
         os.remove(db)
+    if OC_SCHEMA == "v2":
+        return _make_opencode_v2(db, cache, cmds)
     c = sqlite3.connect(db)
     c.executescript("""
         create table project(id text primary key, worktree text, time_created int, time_updated int);
@@ -93,21 +100,150 @@ def make_opencode(root):
     c.commit()
     c.close()
     with open(os.path.join(cache, "models.json"), "w", encoding="utf-8") as f:
-        json.dump({"anthropic": {"models": {
-                       "claude-sonnet-4-5": {"limit": {"context": 200000}, "cost": {"input": 3, "output": 15, "cache_read": 0.3, "cache_write": 3.75}},
-                       "claude-opus-4-1": {"limit": {"context": 200000}, "cost": {"input": 15, "output": 75, "cache_read": 1.5, "cache_write": 18.75}}}},
-                   "openai": {"models": {"gpt-5-mini": {"limit": {"context": 400000}, "cost": {"input": 0.25, "output": 2, "cache_read": 0.025}}}},
-                   "opencode": {"models": {"big-pickle": {"limit": {"context": 200000}, "cost": {"input": 0, "output": 0}}}}}, f)
+        json.dump(OC_CATALOG, f)
+    _write_commands(cmds)
+    return {"db": db, "models": os.path.join(cache, "models.json"), "commands": cmds, "quota": os.path.join(cache, "q")}
+
+
+# models.dev catalog as OpenCode 1.x cached it (models.json)
+OC_CATALOG = {"anthropic": {"models": {
+                  "claude-sonnet-4-5": {"limit": {"context": 200000}, "cost": {"input": 3, "output": 15, "cache_read": 0.3, "cache_write": 3.75}},
+                  "claude-opus-4-1": {"limit": {"context": 200000}, "cost": {"input": 15, "output": 75, "cache_read": 1.5, "cache_write": 18.75}}}},
+              "openai": {"models": {"gpt-5-mini": {"limit": {"context": 400000}, "cost": {"input": 0.25, "output": 2, "cache_read": 0.025}}}},
+              "opencode": {"models": {"big-pickle": {"limit": {"context": 200000}, "cost": {"input": 0, "output": 0}}}}}
+
+
+def _write_commands(cmds):
     with open(os.path.join(cmds, "revisa.md"), "w", encoding="utf-8") as f:
         f.write("---\ndescription: revisión\n---\n" + COMMAND_TEMPLATE + "\n")
+
+
+def _catalog_v3():
+    """OC_CATALOG in the shape OpenCode 2.x stores it: prices under cost.text, cache write per TTL."""
+    out = {}
+    for prov, pdata in OC_CATALOG.items():
+        models = {}
+        for mid, m in pdata["models"].items():
+            c = m["cost"]
+            inp = {"price": c["input"]}
+            cache = {}
+            if "cache_read" in c:
+                cache["read"] = c["cache_read"]
+            if "cache_write" in c:
+                cache["write"] = {"5m": c["cache_write"], "1h": c["cache_write"] * 2}
+            if cache:
+                inp["cache"] = cache
+            models[mid] = {"id": mid, "type": "chat", "limit": dict(m["limit"], output=32000),
+                           "cost": {"text": {"input": inp, "output": {"price": c["output"]}}, "web_search": {"price": 10}}}
+        out[prov] = {"id": prov, "name": prov, "models": models}
+    return out
+
+
+# 1.x error names and the 2.x error types OpenCode writes for them
+_OC_V2_ERRORS = {"MessageAbortedError": "aborted", "ContextOverflowError": "provider.invalid-request"}
+
+
+def _v2_content(d, t):
+    """A 1.x tool/text part's data as 2.x assistant content."""
+    if d["type"] == "text":
+        return {"type": "text", "text": d["text"]}
+    st = d["state"]
+    state = {"status": st["status"], "input": dict(st["input"])}
+    if d["tool"] == "skill":   # 2.x names the skill `id`; the loaded skill's name is in the metadata
+        state["input"] = {"id": st["input"]["name"]}
+        state["metadata"] = {"name": st["input"]["name"]}
+    if st["status"] == "completed":
+        state["content"] = [{"type": "text", "text": "ok"}]
+    if st["status"] == "error":
+        state["error"] = {"type": "tool.execution", "message": st["error"]}
+    return {"type": "tool", "id": "call_" + str(t), "name": d["tool"], "state": state,
+            "time": {"created": t, "completed": t + 500}}
+
+
+def _make_opencode_v2(db, cache, cmds):
+    """The same sample data as OpenCode 2.x writes it (schema copied from a real 2.4.2 database)."""
+    c = sqlite3.connect(db)
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "opencode_v2_schema.sql"), encoding="utf-8") as f:
+        c.executescript(f.read())
+    for pid, wt in OC_PROJECTS.items():
+        c.execute("insert into project(id,worktree,time_created,time_updated,sandboxes) values(?,?,?,?,'[]')", (pid, wt, T0, T0))
+    for sid, prj, parent, title, created in OC_SESSIONS:
+        c.execute("insert into session_v2(id,project_id,parent_id,slug,directory,title,version,time_created,time_updated) "
+                  "values(?,?,?,?,?,?,'2.4.2',?,?)", (sid, prj, parent, sid, OC_PROJECTS[prj], title, created, created + H))
+    parts = {}
+    for pid, mid, sid, t, d in OC_PARTS:
+        parts.setdefault(mid, []).append((t, d))
+    seq = {}
+
+    def message(mid, sid, t, mtype, data, updated=None):
+        n = seq.get(sid, 0)
+        seq[sid] = n + 1
+        c.execute("insert into session_message values(?,?,?,?,?,?,?)",
+                  (mid, sid, mtype, n, t, updated or t, json.dumps(dict(data, time=dict(data.get("time", {}), created=t)))))
+
+    for mid, sid, t, role, parent, agent, prov, model, cost, tok, err in OC_MESSAGES:
+        own = parts.get(mid, [])
+        if role == "user":
+            texts = [d["text"] for _t, d in own if d["type"] == "text" and not d.get("synthetic")]
+            synthetic = [d["text"] for _t, d in own if d["type"] == "text" and d.get("synthetic")]
+            if synthetic:   # 2.x keeps text OpenCode adds by itself in a message of its own
+                message(mid + "s", sid, t, "synthetic", {"text": "\n\n".join(synthetic)})
+            message(mid, sid, t, "user", {"text": "\n\n".join(texts)})
+            continue
+        i, o, r, cr, cw = tok
+        data = {"agent": agent, "model": {"providerID": prov, "id": model, "variant": "default"}, "content": [],
+                "cost": cost, "tokens": {"input": i, "output": o, "reasoning": r, "cache": {"read": cr, "write": cw}},
+                "time": {"completed": t + 1000}}
+        if err:
+            data["error"] = {"type": _OC_V2_ERRORS.get(err, "unknown"), "message": err}
+        message(mid, sid, t, "assistant", data, t + 1000)
+        for n, (pt, d) in enumerate(x for x in own if x[1]["type"] in ("tool", "text")):
+            content = _v2_content(d, pt)
+            c.execute("insert into session_part values(?,?,?,?,?,?,?,?)",
+                      (mid, sid, n, content["type"], content.get("id"), pt, pt, json.dumps(content)))
+        for pt, d in own:   # 2.x writes a compaction as a message of its own, after the answer it summarises
+            if d["type"] == "compaction":
+                message(mid + "c", sid, pt, "compaction", {"status": "completed", "reason": "auto", "summary": "resumen",
+                                                         "model": {"providerID": prov, "id": model}, "cost": 0,
+                                                         "tokens": {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}})
+    body = json.dumps(_catalog_v3())
+    c.execute("insert into kv values('models-dev:v3:catalog',?,?,?)", (json.dumps({"updatedAt": T0, "digest": "fixture", "body": body}), T0, T0))
+    c.commit()
+    c.close()
+    _write_commands(cmds)
     return {"db": db, "models": os.path.join(cache, "models.json"), "commands": cmds, "quota": os.path.join(cache, "q")}
+
+
+def oc_add_assistant(db, mid, sid, t, provider, model, tokens):
+    """Add an answer stored with cost 0 (as a subscription or an unknown model leaves it). tokens: (input, output)."""
+    c = sqlite3.connect(db)
+    usage = {"input": tokens[0], "output": tokens[1], "reasoning": 0, "cache": {"read": 0, "write": 0}}
+    if OC_SCHEMA == "v2":
+        n = c.execute("select coalesce(max(seq),0) + 1 from session_message where session_id = ?", (sid,)).fetchone()[0]
+        d = {"agent": "build", "model": {"providerID": provider, "id": model}, "content": [], "cost": 0, "tokens": usage,
+             "time": {"created": t}}
+        c.execute("insert into session_message values(?,?,'assistant',?,?,?,?)", (mid, sid, n, t, t, json.dumps(d)))
+    else:
+        d = {"role": "assistant", "agent": "build", "providerID": provider, "modelID": model, "cost": 0, "tokens": usage}
+        c.execute("insert into message values(?,?,?,?,?)", (mid, sid, t, t, json.dumps(d)))
+    c.commit()
+    c.close()
+
+
+def oc_remove_messages(db, like):
+    c = sqlite3.connect(db)
+    c.execute("delete from %s where id like ?" % ("session_message" if OC_SCHEMA == "v2" else "message"), (like,))
+    c.commit()
+    c.close()
 
 
 def oc_expected():
     """Totals of the assistant messages, the way the dashboard counts them."""
     a = [m for m in OC_MESSAGES if m[3] == "assistant"]
     tok = lambda m: sum(m[9])
-    return {"cost": round(sum(m[8] for m in a), 6), "messages": len(a), "tokens": sum(tok(m) for m in a),
+    # 2.x writes each compaction as a message of its own, which counts as an answer (agent "compaction")
+    compactions = sum(1 for p in OC_PARTS if p[4]["type"] == "compaction") if OC_SCHEMA == "v2" else 0
+    return {"cost": round(sum(m[8] for m in a), 6), "messages": len(a) + compactions, "tokens": sum(tok(m) for m in a),
             "main_sessions": sum(1 for s in OC_SESSIONS if s[2] is None)}
 
 

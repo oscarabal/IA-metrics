@@ -1,6 +1,7 @@
 """API price of OpenCode's models, to value the messages OpenCode stored with cost 0.
 
-OpenCode stores the cost of each answer with the prices of its models.dev cache (models.json). With a
+OpenCode stores the cost of each answer with the prices of its models.dev catalog (`catalog`: models.json
+in OpenCode 1.x, its database in 2.x). With a
 subscription (GitHub Copilot, a company provider…) or a model that cache does not know, it stores 0.
 To show what those messages would cost at API prices, as the Claude Code dashboard does, a message
 with cost 0 is valued with tokens × price (cost_source "computed"); one that has a cost keeps it ("tool").
@@ -9,17 +10,16 @@ The price of a model: its own provider's in models.json when above 0; otherwise 
 the same model at its maker (anthropic, openai, google…), matched by name with dots, hyphens and case
 ignored ("claude-opus-4.6" = "claude-opus-4-6"). Local providers (LM Studio, Ollama…) are free.
 """
-import json
-import os
 import re
 
-MODELS = os.environ.get("OPENCODE_MODELS", "/cache/models.json")
+import catalog
+
 LOCAL_PROVIDERS = {"lmstudio", "ollama", "llama.cpp", "llamacpp", "llama-cpp", "vllm", "localai", "jan"}
 # Where a model's reference price is looked up first: the makers, then everyone else in models.json
 REFERENCE = ("anthropic", "openai", "google", "xai", "zai", "zhipuai", "deepseek", "mistral", "moonshotai",
              "alibaba", "minimax", "meta", "amazon-bedrock", "azure", "openrouter")
 FIELDS = ("input", "output", "cache_read", "cache_write")
-_cache = {"mtime": None, "own": {}, "ref": {}}
+_cache = {"stamp": None, "own": {}, "ref": {}}
 
 
 def key(model):
@@ -34,13 +34,8 @@ def _paid(cost):
 
 
 def _load():
-    try:
-        mtime = os.path.getmtime(MODELS)
-    except OSError:
-        return _cache
-    if _cache["mtime"] != mtime:
-        with open(MODELS, encoding="utf-8") as f:
-            raw = json.load(f)
+    raw = catalog.load()
+    if _cache["stamp"] != catalog.stamp():
         own, ref = {}, {}
         order = {p: i for i, p in enumerate(REFERENCE)}
         for prov in sorted(raw, key=lambda p: (order.get(p, len(order)), p)):
@@ -50,7 +45,7 @@ def _load():
                     own[(prov, key(mid))] = cost
                     if _paid(cost):
                         ref.setdefault(key(mid), (prov, cost))
-        _cache.update(mtime=mtime, own=own, ref=ref)
+        _cache.update(stamp=catalog.stamp(), own=own, ref=ref)
     return _cache
 
 

@@ -152,7 +152,7 @@ services:
       - ./collectors:/srv:ro
       # La carpeta también guarda auth.json de OpenCode; el colector solo abre opencode.db
       - ${OPENCODE_DATA_DIR:-${USERPROFILE:-${HOME}}/.local/share/opencode}:/data:ro
-      # Solo se lee models.json (límite de contexto) y el estado del plugin de cuotas
+      # Solo se lee models.json (OpenCode 1.x; la 2.x guarda el catálogo en opencode.db) y el estado del plugin de cuotas
       - ${OPENCODE_CACHE_DIR:-${USERPROFILE:-${HOME}}/.cache/opencode}:/cache:ro
       # Solo la carpeta de comandos de la configuración, que también guarda ajustes con claves
       - ${OPENCODE_COMMANDS_DIR:-${USERPROFILE:-${HOME}}/.config/opencode/commands}:/commands:ro

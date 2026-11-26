@@ -20,8 +20,10 @@ select p.id, p.session_id, p.message_id, p.time_created,
        json_extract(p.data,'$.state.input'),
        json_extract(p.data,'$.state.input.name')
 from part p
-where json_extract(p.data,'$.type') in ('tool','compaction')
+where {ids} and json_extract(p.data,'$.type') in ('tool','compaction')
 """
+# The id condition goes first: on OpenCode 2.x `part` is a view (oc_schema) and SQLite tests the
+# conditions in order, so the cheap one discards the parts already read before any JSON is built.
 
 
 class ToolCall:
@@ -56,9 +58,9 @@ class ToolIndex:
             top = conn.execute("select max(id) from part").fetchone()[0] or ""
             with self.lock:
                 last, pending = self.last_id, list(self.pending)
-            rows = conn.execute(TOOL_PARTS + " and p.id > ? and p.id <= ?", (last, top)).fetchall()
+            rows = conn.execute(TOOL_PARTS.format(ids="p.id > ? and p.id <= ?"), (last, top)).fetchall()
             for pid in pending:
-                rows += conn.execute(TOOL_PARTS + " and p.id = ?", (pid,)).fetchall()
+                rows += conn.execute(TOOL_PARTS.format(ids="p.id = ?"), (pid,)).fetchall()
             with self.lock:
                 for pid, sess, msg, t, ptype, tool, status, err, args, skill in rows:
                     if ptype == "compaction":

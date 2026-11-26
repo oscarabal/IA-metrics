@@ -210,12 +210,8 @@ class OpenCodeCollector(unittest.TestCase):
         self.assertFalse([n for n, _l, _v in self.series if n == "opencode_model_without_price_messages"])
         extra = [("msg_x1", "miprov", "mi-modelo"), ("msg_x2", "opencode", "big-pickle"), ("msg_x3", "lmstudio", "qwen"),
                  ("msg_x4", "github-copilot", "claude-sonnet-4.5")]
-        db = sqlite3.connect(PATHS["db"])
         for mid, prov, model in extra:
-            d = {"role": "assistant", "agent": "build", "providerID": prov, "modelID": model, "cost": 0,
-                 "tokens": {"input": 100, "output": 10, "reasoning": 0, "cache": {"read": 0, "write": 0}}}
-            db.execute("insert into message values(?,?,?,?,?)", (mid, "ses_aaa001", fixtures.T0, fixtures.T0, json.dumps(d)))
-        db.commit()
+            fixtures.oc_add_assistant(PATHS["db"], mid, "ses_aaa001", fixtures.T0, prov, model, (100, 10))
         try:
             exporter.refresh_series()   # what the background thread does every SERIES_EVERY seconds
             found = [(lab, v) for n, lab, v in helpers.parse_metrics(exporter.collect()) if n == "opencode_model_without_price_messages"]
@@ -239,9 +235,7 @@ class OpenCodeCollector(unittest.TestCase):
             self.assertEqual(page.count('<tr class="flag">'), 1)
             self.assertEqual(self.srv.get("/prices", host="evil.example.com")[0], 421)
         finally:
-            db.execute("delete from message where id like 'msg_x%'")
-            db.commit()
-            db.close()
+            fixtures.oc_remove_messages(PATHS["db"], "msg_x%")
         self.assertEqual(exporter.prices_status(), "OK\n")
 
     def test_api_cost_of_zero_cost_messages(self):

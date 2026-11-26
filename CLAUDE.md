@@ -34,7 +34,9 @@ docker compose up -d --force-recreate otel-collector    # aplicar cambios en con
   de las conversaciones: tokens, effort, herramientas, permisos, prompts), `pages.py`, `coach/` (informe,
   reglas D1–D10 + C1–C6; `store.py` = `coach.db`, archivo de sesiones y costes de la telemetría, con retención `COACH_RETENTION_DAYS` y VACUUM diario).
 - `collectors/opencode/` — antiguo `exporter`: `exporter.py` (HTTP :9101, lectura de `opencode.db`),
-  `session_page.py`, `api_prices.py` (precio de API de models.json para los mensajes que OpenCode guarda con
+  `oc_schema.py` (OpenCode 2.x: vistas temporales `session`/`message`/`part` con la forma de 1.x, ADR 0010;
+  las consultas se escriben para 1.x), `catalog.py` (models.dev: `models.json` o la tabla `kv` de 2.x),
+  `session_page.py`, `api_prices.py` (precio de API del catálogo de models.dev para los mensajes que OpenCode guarda con
   coste 0: `hybrid` es el único punto que decide el coste de `/data`), `coach/` (reglas D1–D11).
 - Modelos sin precio: los dos colectores sirven `/prices` (página) y `/prices/missing` (texto: `OK`,
   `SIN PRECIO` o `PENDIENTE`, que lee `Iniciar-metricas.bat`) y publican

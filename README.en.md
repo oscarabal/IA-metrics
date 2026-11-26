@@ -140,7 +140,7 @@ flowchart TD
     M["A model answer"] --> T{"Tool?"}
     T -- OpenCode --> OS{"Did OpenCode store<br/>a cost above 0?"}
     OS -- yes --> O["The cost OpenCode stores<br/>cost_source = tool"]
-    OS -- "no: subscription (Copilot…)<br/>or unknown model" --> OP{"Is there a price<br/>in models.json?"}
+    OS -- "no: subscription (Copilot…)<br/>or unknown model" --> OP{"Is there a price in the<br/>models.dev catalogue?"}
     OP -- yes --> OC2["Tokens × API price<br/>cost_source = computed"]
     OP -- no --> CM
     T -- "Claude Code" --> TEL{"Did the telemetry<br/>report that request?"}
@@ -160,7 +160,8 @@ collector uses the models.dev price: it downloads its public catalogue once a da
 it off) and also applies it to the messages already read. That price has no periods, fast mode or US-only
 surcharge, so `prices.json` still wins.
 
-In OpenCode the price comes from its models.dev cache (`models.json`): the provider's own or, when it gives
+In OpenCode the price comes from its models.dev catalogue (`models.json` in OpenCode 1.x; in 2.x, inside
+`opencode.db`): the provider's own or, when it gives
 none (like GitHub Copilot), the model maker's, matched by name (`github-copilot/claude-opus-4.6` →
 `anthropic/claude-opus-4-6`). Local models (LM Studio, Ollama…) cost 0. OpenCode's improvement report still
 uses the cost OpenCode stores.
@@ -261,7 +262,7 @@ docker compose exec opencode-collector python /srv/opencode/coach/cli.py report 
 ## Privacy
 
 - **Read-only, metadata only.** From Claude Code, `projects`, `commands` and `skills` are mounted, never the
-  whole `~/.claude` nor `settings.json`. From OpenCode, `opencode.db`, `models.json` and the commands folder.
+  whole `~/.claude` nor `settings.json`. From OpenCode, `opencode.db`, `models.json` (1.x only) and the commands folder.
   No conversation, prompt or error text is ever written to disk: errors are classified in memory, and of
   each tool result only its size and duration are kept.
 - **Session archive** (`coach.db`): tokens, models, tools, skills and ids of each session, so the history
@@ -298,6 +299,10 @@ docker compose exec opencode-collector python /srv/opencode/coach/cli.py report 
 - If you choose a single tool, its dashboard stays empty and the Resumen IA panels show a connection
   warning for the other one.
 - No volume backups and no high availability: it is a local, single-user tool.
+- Works with OpenCode 1.x and 2.x (tested with 2.4.2), which store their database differently
+  ([ADR 0010](docs/adr/0010-compatibilidad-con-opencode-2.md)). OpenCode's history lives in its `opencode.db`:
+  if you delete its data folder when upgrading OpenCode, the dashboard starts from scratch. Back it up first
+  ([docs/opencode.md](docs/opencode.md#al-actualizar-opencode)).
 
 ## Next steps
 

@@ -8,7 +8,7 @@ de mejoras. La instalación y la arquitectura general están en el [README](../R
 ```mermaid
 flowchart LR
     OC["OpenCode"] -. escribe .-> DB[("opencode.db")]
-    MJ[("models.json<br/>límites de contexto")] --> COL
+    MJ[("models.json (1.x)<br/>precios y límites")] --> COL
     CMD[("commands/*.md")] --> COL
     Q[("caché del plugin<br/>opencode-quota")] --> COL
     DB -- "solo lectura" --> COL["opencode-collector"]
@@ -18,16 +18,18 @@ flowchart LR
 ```
 
 No hay que configurar nada en OpenCode: el colector lee su base de datos en solo lectura y tiene el
-historial desde la primera sesión guardada. El coste es el que OpenCode guarda en cada mensaje; cuando guarda 0
-con tokens (suscripción como GitHub Copilot, o un modelo que no conoce), se calcula a precio de API con su caché de
-models.dev (`models.json`): el precio del propio proveedor o, si no lo da, el del fabricante del modelo (Copilot →
+historial desde la primera sesión guardada. Funciona con OpenCode 1.x y 2.x (probado con la 2.4.2): la 2.x
+cambió las tablas y guarda el catálogo de models.dev dentro de `opencode.db` en lugar de `models.json`; el
+colector detecta la versión al conectar ([ADR 0010](adr/0010-compatibilidad-con-opencode-2.md)). El coste es el que OpenCode guarda en cada mensaje; cuando guarda 0
+con tokens (suscripción como GitHub Copilot, o un modelo que no conoce), se calcula a precio de API con su catálogo de
+models.dev (`models.json` en 1.x, la tabla `kv` de `opencode.db` en 2.x): el precio del propio proveedor o, si no lo da, el del fabricante del modelo (Copilot →
 Anthropic, OpenAI…). Es lo que costaría por API, no lo que pagas con la suscripción (`cost_source=computed` en `/data`).
 El informe de mejoras sigue usando el coste que guarda OpenCode.
 
 | Fuente | Qué aporta |
 | --- | --- |
-| `opencode.db` (tablas `session`, `message`, `part`, `project`) | Cada respuesta con su coste, tokens (input, output, razonamiento, caché), proveedor, modelo y agente; llamadas a herramientas y errores; skills, compactaciones, interrupciones y el texto de los prompts (solo en memoria). |
-| `~/.cache/opencode/models.json` | El límite de contexto de cada modelo. Para modelos que no conoce: `OPENCODE_CONTEXT_LIMITS`. |
+| `opencode.db` (1.x: tablas `session`, `message`, `part`, `project`; 2.x: `session_v2`, `session_message`, `session_part`, `project`, `kv`) | Cada respuesta con su coste, tokens (input, output, razonamiento, caché), proveedor, modelo y agente; llamadas a herramientas y errores; skills, compactaciones, interrupciones y el texto de los prompts (solo en memoria). |
+| Catálogo de models.dev (`~/.cache/opencode/models.json` en 1.x; tabla `kv` de `opencode.db` en 2.x) | Precio y límite de contexto de cada modelo. Para modelos que no conoce: `OPENCODE_CONTEXT_LIMITS`. |
 | `~/.config/opencode/commands` | Las plantillas de tus comandos: OpenCode guarda el comando ya expandido, y el colector lo reconoce por el principio de la plantilla. Los comandos definidos dentro de un proyecto no se ven. |
 | Plugin `opencode-quota` (opcional) | Cuánto queda de la cuota de cada proveedor. |
 
@@ -94,9 +96,9 @@ Reglas del informe (D1–D10 son comunes con Claude Code):
 | Variable | Para qué |
 | --- | --- |
 | `OPENCODE_DATA_DIR` | Dónde está `opencode.db` (por defecto `~/.local/share/opencode`). |
-| `OPENCODE_CACHE_DIR` | Dónde está `models.json` (por defecto `~/.cache/opencode`). |
+| `OPENCODE_CACHE_DIR` | Dónde está `models.json` en OpenCode 1.x y la caché del plugin de cuotas (por defecto `~/.cache/opencode`). |
 | `OPENCODE_COMMANDS_DIR` | Carpeta de comandos globales (por defecto `~/.config/opencode/commands`). |
-| `OPENCODE_CONTEXT_LIMITS` | Límites de contexto de modelos que `models.json` no conoce (`proveedor/modelo=tokens`). |
+| `OPENCODE_CONTEXT_LIMITS` | Límites de contexto de modelos que el catálogo de models.dev no conoce (`proveedor/modelo=tokens`). |
 | `OPENCODE_CONTEXT_SESSIONS` | Cuántas sesiones recientes muestra el panel de contexto. |
 | `OPENCODE_SUBSCRIPTION_PROVIDERS` | Proveedores que pagas con suscripción (p. ej. `github-copilot`), separados por comas. Solo informativo: la página de precios los marca como «suscripción». |
 | `TZ`, `ALLOWED_HOSTS` | Como en Claude Code: zona horaria y nombres extra. |
@@ -108,3 +110,13 @@ curl -s "http://localhost:9101/data/usage?group=model&sort=-cost&limit=5"   # co
 curl -s http://localhost:9101/prices/missing                               # ¿algún modelo sin precio?
 docker compose logs --tail 50 opencode-collector
 ```
+
+## Al actualizar OpenCode
+
+- **El historial vive en `opencode.db`.** OpenCode 2.x importa el de 1.x dentro del mismo fichero la primera
+  vez que arranca. Si desinstalas la versión anterior borrando `~/.local/share/opencode`, la nueva crea una base
+  de datos vacía y el dashboard empieza de cero: haz una copia de `opencode.db` antes de actualizar.
+- **Si el dashboard se queda vacío tras actualizar**, mira el log del colector
+  (`docker compose logs opencode-collector`): al arrancar indica qué esquema ha detectado. Un esquema nuevo
+  que el colector no conoce aparece como error al abrir `opencode.db`.
+

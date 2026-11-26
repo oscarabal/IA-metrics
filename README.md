@@ -139,7 +139,7 @@ flowchart TD
     M["Una respuesta del modelo"] --> T{"¿Herramienta?"}
     T -- OpenCode --> OS{"¿OpenCode guardó<br/>un coste mayor que 0?"}
     OS -- sí --> O["El coste que guarda OpenCode<br/>cost_source = tool"]
-    OS -- "no: suscripción (Copilot…)<br/>o modelo desconocido" --> OP{"¿Hay precio en<br/>models.json?"}
+    OS -- "no: suscripción (Copilot…)<br/>o modelo desconocido" --> OP{"¿Hay precio en el<br/>catálogo de models.dev?"}
     OP -- sí --> OC2["Tokens × precio de API<br/>cost_source = computed"]
     OP -- no --> CM
     T -- "Claude Code" --> TEL{"¿La telemetría informó<br/>de esa petición?"}
@@ -159,7 +159,8 @@ usa el precio de models.dev: descarga una vez al día su catálogo público (`MO
 desactiva) y aplica ese precio también a los mensajes que ya había leído. Ese precio no tiene periodos ni modo
 rápido ni recargo de EE. UU., así que `prices.json` sigue mandando ([ADR 0006](docs/adr/0006-precios-de-claude-code-desde-models-dev.md)).
 
-En OpenCode el precio sale de su caché de models.dev (`models.json`): el del propio proveedor o, si no lo da
+En OpenCode el precio sale de su catálogo de models.dev (`models.json` en OpenCode 1.x; en 2.x, dentro de
+`opencode.db`): el del propio proveedor o, si no lo da
 (como GitHub Copilot), el del fabricante del modelo, buscado por nombre (`github-copilot/claude-opus-4.6` →
 `anthropic/claude-opus-4-6`). Los modelos locales (LM Studio, Ollama…) cuestan 0. El informe de mejoras de
 OpenCode sigue usando el coste que guarda OpenCode.
@@ -259,7 +260,7 @@ docker compose exec opencode-collector python /srv/opencode/coach/cli.py report 
 ## Privacidad
 
 - **Solo lectura y solo metadatos.** De Claude Code se montan `projects`, `commands` y `skills`, nunca
-  `~/.claude` entero ni `settings.json`. De OpenCode, `opencode.db`, `models.json` y la carpeta de comandos.
+  `~/.claude` entero ni `settings.json`. De OpenCode, `opencode.db`, `models.json` (solo 1.x) y la carpeta de comandos.
   Nada se guarda en disco con texto de conversaciones, prompts o errores: los errores se clasifican en
   memoria y de cada resultado de herramienta solo se guardan su tamaño y su duración.
 - **Archivo de sesiones** (`coach.db`): tokens, modelos, herramientas, skills e identificadores de cada
@@ -295,6 +296,10 @@ docker compose exec opencode-collector python /srv/opencode/coach/cli.py report 
 - Si eliges una sola herramienta, su dashboard queda vacío y los paneles del Resumen IA muestran un aviso de
   conexión para la otra.
 - Sin copias de seguridad de los volúmenes ni alta disponibilidad: es una herramienta local de un usuario.
+- Funciona con OpenCode 1.x y 2.x (probado con la 2.4.2), que guardan la base de datos de forma distinta
+  ([ADR 0010](docs/adr/0010-compatibilidad-con-opencode-2.md)). El historial de OpenCode está en su `opencode.db`:
+  si al actualizar OpenCode borras su carpeta de datos, el dashboard empieza de cero. Haz una copia antes
+  ([docs/opencode.md](docs/opencode.md#al-actualizar-opencode)).
 
 ## Próximos pasos
 

@@ -1,8 +1,10 @@
 """Prometheus exporter for OpenCode usage.
 
 Reads OpenCode's SQLite database (read-only) and publishes cost and token
-totals. Only the `message`, `session` and `project` tables are queried. The
-context limit of each model comes from OpenCode's models.dev cache.
+totals. The queries are written for OpenCode 1.x's `session`, `message` and
+`part` tables; on an OpenCode 2.x database `oc_schema` presents its new tables
+in that shape. The context limit of each model comes from OpenCode's models.dev
+catalog (`catalog`: models.json in 1.x, the database in 2.x).
 """
 import calendar
 import json
@@ -19,13 +21,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import report_page
 import ledger_source
 import api_prices
+import catalog
+import oc_schema
 import session_page
 from common import security
 from common import ledger as common_ledger
 from coach import index as coach_index, metrics as coach_metrics, render as coach_render, report as coach_report
 
 DB = os.environ.get("OPENCODE_DB", "/data/opencode.db")
-MODELS = os.environ.get("OPENCODE_MODELS", "/cache/models.json")
 COMMANDS_DIR = os.environ.get("OPENCODE_COMMANDS_DIR", "/commands")
 GRAFANA_URL = os.environ.get("GRAFANA_URL", "http://localhost:3000/d/opencode-usage")
 PORT = int(os.environ.get("PORT", "9101"))
@@ -63,25 +66,20 @@ where json_extract(m.data,'$.role') = 'assistant'
 group by 1,2,3,4
 """
 
-_limits = {"mtime": None, "data": {}}
+_limits = {"stamp": None, "data": {}}
 
 
 def model_limits():
-    """Context limits from the models.dev cache, reloaded only when the file changes."""
-    try:
-        mtime = os.path.getmtime(MODELS)
-    except OSError:
-        return {}
-    if _limits["mtime"] != mtime:
-        with open(MODELS, encoding="utf-8") as f:
-            raw = json.load(f)
+    """Context limits from the models.dev catalog, recomputed only when the catalog changes."""
+    raw = catalog.load()
+    if _limits["stamp"] != catalog.stamp():
         data = {}
         for prov, pdata in raw.items():
             for mid, mdata in (pdata.get("models") or {}).items():
                 ctx = (mdata.get("limit") or {}).get("context")
                 if ctx:
                     data[(prov, mid)] = int(ctx)
-        _limits.update(mtime=mtime, data=data)
+        _limits.update(stamp=catalog.stamp(), data=data)
     return _limits["data"]
 
 
@@ -115,7 +113,7 @@ def model_costs(c):
     """Per model: (provider, model, messages, tokens, cost OpenCode stored, messages with tokens but cost 0,
     first ms, last ms, price or None, flagged, price source, API-equivalent cost, payment).
     The API-equivalent cost adds tokens × price to the messages stored with cost 0 (api_prices).
-    Flagged: it has such messages and no price is known for it anywhere in models.json."""
+    Flagged: it has such messages and no price is known for it anywhere in the models.dev catalog."""
     rows = []
     for prov, model, n, tok, stored, zero, first, last, *ztok in c.execute(MODEL_COSTS):
         price, src = api_prices.price(prov, model)
@@ -126,10 +124,10 @@ def model_costs(c):
 
 
 def models_without_price(c):
-    """provider/model -> messages stored with cost 0 that cannot be valued: no price for the model in models.json."""
+    """provider/model -> messages stored with cost 0 that cannot be valued: no price for the model in the models.dev catalog."""
     found = {"%s/%s" % (r[0], r[1]): r[5] for r in model_costs(c) if r[9]}
     for model in sorted(set(found) - _warned_models):
-        print("AVISO: %s no tiene precio en models.json; sus %d mensajes con coste 0 no cuentan en el dashboard."
+        print("AVISO: %s no tiene precio en el catálogo de models.dev; sus %d mensajes con coste 0 no cuentan en el dashboard."
               % (model, found[model]), flush=True)
         _warned_models.add(model)
     return found
@@ -154,7 +152,7 @@ def prices_page():
         models_without_price(c)
     finally:
         c.close()
-    return session_page.render_prices(rows, GRAFANA_URL, os.path.exists(MODELS))
+    return session_page.render_prices(rows, GRAFANA_URL, catalog.available())
 
 
 def context_limit(provider, model):
@@ -256,8 +254,11 @@ from part p
 join message m on m.id = p.message_id
 join session s on s.id = p.session_id
 left join project pr on pr.id = s.project_id
-where json_extract(p.data,'$.type') = 'tool' and json_extract(p.data,'$.tool') = 'skill'
+where {ids} and json_extract(p.data,'$.type') = 'tool' and json_extract(p.data,'$.tool') = 'skill'
 """
+# In SKILL_CALLS, USER_TEXTS and coach/index.py the id condition goes first: on OpenCode 2.x `part` is a
+# view (oc_schema) and SQLite tests the conditions in order, so the parts already read are discarded
+# before their JSON is built.
 
 # A turn is every assistant message that answers the same user message
 # A custom command leaves no mark in the database: OpenCode stores its template, already
@@ -274,8 +275,8 @@ from part p
 join message m on m.id = p.message_id
 join session s on s.id = p.session_id
 left join project pr on pr.id = s.project_id
-where json_extract(m.data,'$.role') = 'user' and json_extract(p.data,'$.type') = 'text'
-  and p.id > ? and p.id <= ?
+where p.id > ? and p.id <= ?
+  and json_extract(m.data,'$.role') = 'user' and json_extract(p.data,'$.type') = 'text'
 """
 
 _commands = {"stamp": None, "templates": {}}
@@ -330,9 +331,9 @@ def refresh_skill_calls():
         top = c.execute("select max(id) from part").fetchone()[0] or ""
         with _skills_lock:
             last, pending = _skills["last_id"], list(_skills["pending"])
-        rows = c.execute(SKILL_CALLS + " and p.id > ? and p.id <= ?", (last, top)).fetchall()
+        rows = c.execute(SKILL_CALLS.format(ids="p.id > ? and p.id <= ?"), (last, top)).fetchall()
         for pid in pending:  # calls that were still running the last time
-            rows += c.execute(SKILL_CALLS + " and p.id = ?", (pid,)).fetchall()
+            rows += c.execute(SKILL_CALLS.format(ids="p.id = ?"), (pid,)).fetchall()
         templates = command_templates()
         texts = []
         if templates or PROMPT_TEXT:
@@ -394,12 +395,20 @@ def esc(v):
     return str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
 
 
+_schema_seen = {"version": None}
+
+
 def connect():
     # mode=ro needs the -shm/-wal files; immutable=1 is the fallback when the
     # database sits on a read-only mount without them (it ignores the WAL).
     for suffix in ("?mode=ro", "?immutable=1"):
         try:
             c = sqlite3.connect("file:" + DB + suffix, uri=True, timeout=5)
+            found = oc_schema.adapt(c)   # OpenCode 2.x: views with 1.x's tables (temporary, nothing is written)
+            if found != _schema_seen["version"]:
+                _schema_seen["version"] = found
+                print("opencode.db: esquema de OpenCode %s%s." % (
+                    "1.x" if found == "v1" else "2.x", "" if found == "v1" else " (leído con vistas de 1.x, ADR 0010)"), flush=True)
             c.execute("select 1 from message limit 1")
             return c
         except sqlite3.Error:

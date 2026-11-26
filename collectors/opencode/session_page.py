@@ -147,7 +147,7 @@ def render_prices(rows, grafana_url, have_models):
                     + [e(src if src not in ("", "local") else ("—" if src == "local" else prov) if price else "—"), when(first), when(last)])
     flagged = {k for k, r in enumerate(rows) if r[9]}
     banner = ('<div class="card bad"><b>%d modelos sin precio</b> (resaltados en la tabla): OpenCode guardó coste 0 y no hay precio '
-              'para ese modelo en models.json, ni de su proveedor ni de su fabricante, así que su coste no cuenta en el dashboard. '
+              'para ese modelo en el catálogo de models.dev, ni de su proveedor ni de su fabricante, así que su coste no cuenta en el dashboard. '
               'Puedes darle precio en la configuración de OpenCode (<code>provider.&lt;id&gt;.models.&lt;id&gt;.cost</code>); '
               'IA-metrics lo leerá de models.json cuando OpenCode lo actualice.</div>' % len(flagged)) if flagged else ""
     if not have_models:

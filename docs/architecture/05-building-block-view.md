@@ -89,7 +89,9 @@ Toda ruta pasa primero por `common/security.py` ([08](08-crosscutting-concepts.m
 | Módulo | Responsabilidad |
 | --- | --- |
 | `exporter.py` | Servidor HTTP y rutas; hilo de fondo que lee `opencode.db` (series, skills, comandos, prompts); cuotas |
-| `api_prices.py` | Precio de API desde `models.json` y coste híbrido ([ADR 0005](../adr/0005-coste-de-opencode-a-precio-de-api.md)) |
+| `oc_schema.py` | Vistas temporales `session`/`message`/`part` con la forma de 1.x sobre una base de datos de OpenCode 2.x ([ADR 0010](../adr/0010-compatibilidad-con-opencode-2.md)) |
+| `catalog.py` | Catálogo de models.dev: `models.json` (1.x) o tabla `kv` de `opencode.db` (2.x), normalizado a la forma de 1.x |
+| `api_prices.py` | Precio de API desde el catálogo de models.dev y coste híbrido ([ADR 0005](../adr/0005-coste-de-opencode-a-precio-de-api.md)) |
 | `ledger_source.py` | Conjuntos de `/data` |
 | `session_page.py`, `report_page.py` | Páginas HTML |
 | `coach/` | Informe: `index` (llamadas a herramientas), `report`, `render`, `metrics` (instantánea compartida), `errors`, `cli` |
